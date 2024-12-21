@@ -1,27 +1,18 @@
 # Configuration Constants
 MAX_IMAGES_TO_PROCESS = 100  # Maximum number of images to process
-BAR_SIZE_PERCENT = 1         # Size of color bar as percentage of smallest image dimension
+BAR_SIZE_PERCENT = 2         # Size of color bar as percentage of smallest image dimension
 COLOR_TOLERANCE = 50         # Tolerance for color matching during verification
-JPG_QUALITY = 50            # JPEG compression quality (0-100)
-REQUIRED_MATCH_PERCENT = 87.5  # Percentage of squares that must match (14/16 = 87.5%)
-
-"""
-Refactored main.py to generate a purely color-based barcode (UUID) that does not depend on the image's pixels.
-The barcode now comprises 16 random color squares, chosen from a 24-color HSV palette.
-
-Key Points:
-• The palette remains 24 colors, equally spaced around the HSV color wheel.
-• Each of the 16 squares is chosen at random from the palette, avoiding adjacent duplicates.
-• Verification still checks the bottom-right color bar's averages and compares to the UUID in the filename.
-• A match requires at least 14 out of 16 squares to meet ±15 color tolerance.
-• We continue to seed the "random" module with the current time for variability.
-"""
+JPG_QUALITY = 100            # JPEG compression quality (0-100)
+REQUIRED_MATCH_PERCENT = 75  # Percentage of squares that must match (14/16 = 87.5%)
+MIN_PIXEL_SIZE = 5          # Minimum size in pixels for each color square
 
 import random
 import time
 import colorsys
 from pathlib import Path
 from PIL import Image
+import cv2
+import numpy as np
 
 # Seed the random generator with current time
 random.seed(int(time.time()))
@@ -80,7 +71,7 @@ def create_color_bar(uuid_colors, img_width, img_height):
     """
     num_squares = len(uuid_colors)
     # Calculate pixel size based on percentage of smallest image dimension
-    pixel_size = max(5, (min(img_width, img_height) * BAR_SIZE_PERCENT) // 100)
+    pixel_size = max(MIN_PIXEL_SIZE, (min(img_width, img_height) * BAR_SIZE_PERCENT) // 100)
     bar_width = pixel_size * num_squares
     bar_height = pixel_size
 
@@ -191,7 +182,7 @@ def verify_image_uuids(folder_path="images/output"):
             pil_img = Image.open(img_path).convert("RGB")
             w, h = pil_img.size
             # Calculate the same pixel size as used in creation
-            pixel_size = max(5, (min(w, h) * BAR_SIZE_PERCENT) // 100)
+            pixel_size = max(MIN_PIXEL_SIZE, (min(w, h) * BAR_SIZE_PERCENT) // 100)
             bar_w = pixel_size * 16
             bar_h = pixel_size
             bar_x = w - bar_w
@@ -252,6 +243,58 @@ def verify_image_uuids(folder_path="images/output"):
     if total_count:
         print(f"Success Rate: {success_count / total_count * 100:.2f}%")
 
+def create_montage_video(folder_path="images/output", fps=5, output_name="montage.mp4"):
+    """
+    Creates a video montage of all processed images.
+    
+    Args:
+        folder_path (str): Path to folder containing processed images
+        fps (int): Frames per second (images shown per second)
+        output_name (str): Name of output video file
+    """
+    src_folder = Path(folder_path)
+    if not src_folder.exists():
+        print(f"Folder not found: {folder_path}")
+        return
+
+    # Get all image files
+    image_files = [f for f in src_folder.glob("*") 
+                   if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".bmp"]]
+    
+    if not image_files:
+        print("No images found to process")
+        return
+
+    # Read first image to get dimensions
+    first_img = cv2.imread(str(image_files[0]))
+    height, width = first_img.shape[:2]
+    
+    # Create video writer
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_name, fourcc, fps, (width, height))
+
+    print(f"Creating video montage at {fps} FPS...")
+    for img_path in image_files:
+        try:
+            # Read and ensure image is in BGR format for OpenCV
+            img = cv2.imread(str(img_path))
+            if img is None:
+                continue
+                
+            # Resize if necessary
+            if img.shape[:2] != (height, width):
+                img = cv2.resize(img, (width, height))
+                
+            # Write frame
+            out.write(img)
+            
+        except Exception as exc:
+            print(f"Error processing {img_path.name}: {exc}")
+            continue
+
+    out.release()
+    print(f"Video montage saved as {output_name}")
+
 if __name__ == "__main__":
     # 1) Generate & save images
     process_images("images")
@@ -259,3 +302,7 @@ if __name__ == "__main__":
     # 2) Verify them
     print("\nVerifying processed images...")
     verify_image_uuids("images/output")
+    
+    # 3) Create video montage
+    print("\nCreating video montage...")
+    create_montage_video(fps=3)
