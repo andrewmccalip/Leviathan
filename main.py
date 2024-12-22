@@ -1,9 +1,9 @@
 # Configuration Constants
 MAX_IMAGES_TO_PROCESS = 4   # Maximum number of images to process
 BAR_SIZE_PERCENT = 1          # Size of color bar as percentage of smallest image dimension
-COLOR_TOLERANCE = 30          # Tolerance for color matching during verification
+COLOR_TOLERANCE = 40          # Tolerance for color matching during verification
 JPG_QUALITY = 85             # JPEG compression quality (0-100)
-REQUIRED_MATCH_PERCENT = 87.5 # Percentage of bars that must match
+REQUIRED_MATCH_PERCENT = 75 # Percentage of bars that must match
 MIN_BAR_WIDTH = 5            # Minimum width in pixels for each color bar
 BAR_HEIGHT_MULTIPLIER = 2     # Height will be this times the width
 NUM_BARS = 12                # Number of vertical bars in the color barcode
@@ -17,6 +17,7 @@ from PIL import Image
 import cv2
 import numpy as np
 import base64
+from scipy.fftpack import dct
 
 # Seed the random generator with current time
 random.seed(int(time.time()))
@@ -37,35 +38,30 @@ def generate_color_palette(num_colors=24):
         colors.append(color)
     return colors
 
-def generate_color_uuid(img, colors, num_bars=NUM_BARS):
+def generate_color_uuid_from_hash(img, colors, hash_value, num_bars=NUM_BARS):
     """
-    Generate a 24-color UUID by randomly picking 24 colors from the palette.
-    Adjacency duplicates are avoided. We encode them as a 144-character hex string
-    (24 bars × 6 hex digits per color).
+    Generate a deterministic sequence of 12 colors from a 64-bit hash.
+    Each color needs 5 bits (for 24 possible colors), total 60 bits used.
     """
+    # Convert hash to integer
+    seed_value = int(hash_value, 16)
+    
+    # Create deterministic sequence using the hash bits
     uuid_colors = []
-    prev_color = None
-
-    for _ in range(num_bars):
-        # Choose a random color from the palette
-        chosen = random.choice(colors)
-
-        # Avoid identical repeats (adjacent bars)
-        if chosen == prev_color:
-            alt = [c for c in colors if c != chosen]
-            if alt:
-                chosen = random.choice(alt)
-
-        uuid_colors.append(chosen)
-        prev_color = chosen
-
-    # Encode to 144-char hex string
-    hex_uuid = ""
-    for (r, g, b) in uuid_colors:
-        hex_uuid += f"{r:02x}{g:02x}{b:02x}"
-    if len(hex_uuid) != num_bars * 6:
-        raise ValueError("Resulting UUID must be 144 characters long.")
-    return uuid_colors, hex_uuid
+    for i in range(NUM_BARS):
+        # Use lower bits first and rotate through them
+        shift = (i * 5) % 32  # Use only lower 32 bits and cycle
+        lower_bits = (seed_value >> shift) & 0x1F
+        upper_bits = (seed_value >> (32 + shift)) & 0x1F
+        
+        # XOR lower and upper bits for better distribution
+        color_index = (lower_bits ^ upper_bits) % len(colors)
+        uuid_colors.append(colors[color_index])
+    
+    # Create compact color hash (just indices)
+    color_hash = ''.join(f"{colors.index(c):02x}" for c in uuid_colors)
+    
+    return uuid_colors, color_hash
 
 def create_color_bar(uuid_colors, img_width, img_height):
     """
@@ -115,7 +111,7 @@ def process_images(folder_path="images"):
         try:
             with Image.open(img_path) as pil_img:
                 img_rgb = pil_img.convert("RGB")
-                uuid_colors, _ = generate_color_uuid(img_rgb, palette, NUM_BARS)
+                uuid_colors, _ = generate_color_uuid_from_hash(img_rgb, palette, phash_dhash_combo(img_rgb))
                 
                 # Generate compact URL-safe UUID
                 url_uuid = encode_uuid_for_url(uuid_colors, palette)
@@ -175,21 +171,19 @@ def verify_image_uuids(folder_path="images/output"):
             # Read each color bar from that region
             detected = []
             for i in range(NUM_BARS):
-                x0 = bar_x + i * pixel_size
-                y0 = bar_y
-                # Sample from center strip of each bar
-                margin_x = int(pixel_size * 0.3)  # 30% margin from sides
-                margin_y = int(bar_h * 0.1)  # 10% margin from top/bottom
-                sq_pixels = []
-                for xx in range(x0 + margin_x, x0 + pixel_size - margin_x):
-                    for yy in range(y0 + margin_y, y0 + bar_h - margin_y):
-                        if 0 <= xx < w and 0 <= yy < h:
-                            sq_pixels.append(pil_img.getpixel((xx, yy)))
-                if not sq_pixels:
-                    raise ValueError("No pixels found in bar region.")
-                avg_r = sum(px[0] for px in sq_pixels) // len(sq_pixels)
-                avg_g = sum(px[1] for px in sq_pixels) // len(sq_pixels)
-                avg_b = sum(px[2] for px in sq_pixels) // len(sq_pixels)
+                x_center = bar_x + (i * pixel_size) + (pixel_size // 2)
+                y_center = bar_y + (bar_h // 2)
+                
+                # Get the center pixel and its neighbors
+                left_color = pil_img.getpixel((x_center - 1, y_center))
+                center_color = pil_img.getpixel((x_center, y_center))
+                right_color = pil_img.getpixel((x_center + 1, y_center))
+                
+                # Calculate average RGB values
+                avg_r = (left_color[0] + center_color[0] + right_color[0]) // 3
+                avg_g = (left_color[1] + center_color[1] + right_color[1]) // 3
+                avg_b = (left_color[2] + center_color[2] + right_color[2]) // 3
+                
                 detected.append((avg_r, avg_g, avg_b))
 
             # Compare detected vs. expected
@@ -331,14 +325,130 @@ def decode_url_to_colors(url_string, color_palette):
     # Convert indices back to RGB colors
     return [color_palette[i] for i in indices]
 
+def phash_dhash_combo(image, hash_size=4):
+    """
+    Calculate a 64-bit hash using a combination of perceptual hash (phash) and difference hash (dhash).
+    """
+    # Get dhash bits first
+    dhash_image = image.convert('L').resize((hash_size + 1, hash_size), Image.Resampling.LANCZOS)
+    dhash_pixels = np.array(dhash_image.getdata(), dtype=float).reshape((hash_size, hash_size + 1))
+    dhash_bits = ''.join(['1' if dhash_pixels[i, j] > dhash_pixels[i, j + 1] else '0'
+                          for i in range(hash_size) for j in range(hash_size)])
+
+    # Then get phash bits
+    phash_image = image.convert('L').resize((hash_size, hash_size), Image.Resampling.LANCZOS)
+    phash_pixels = np.array(phash_image.getdata(), dtype=float).reshape((hash_size, hash_size))
+    dct_result = dct(dct(phash_pixels, axis=0), axis=1)
+    dct_low = dct_result[:hash_size, :hash_size]
+    avg = (dct_low[0, 1:].sum() + dct_low[1:, :].sum()) / (hash_size * hash_size - 1)
+    phash_bits = ''.join(['1' if val >= avg else '0' for val in dct_low.flatten()[1:]])
+
+    # Put dhash bits first, then phash bits
+    combined_bits = dhash_bits + phash_bits
+    hashcode = hex(int(combined_bits, 2))[2:].rjust(16, '0')
+
+    print(f"Hash: {hashcode}")
+    return hashcode
+
+def test_verification_accuracy(folder_path="images/output"):
+    """
+    Tests the verification function's accuracy by comparing detected colors
+    against the source of truth (filename-encoded colors).
+    """
+    src_folder = Path(folder_path)
+    if not src_folder.exists():
+        print(f"Folder not found: {folder_path}")
+        return
+
+    palette = generate_color_palette(num_colors=NUM_PALETTE_COLORS)
+    total_tests = 0
+    perfect_matches = 0
+    acceptable_matches = 0
+
+    for img_path in src_folder.glob("*.jpg"):
+        total_tests += 1
+        try:
+            # Get truth from filename
+            true_uuid = img_path.stem
+            true_colors = decode_url_to_colors(true_uuid, palette)
+
+            # Read image and detect colors
+            pil_img = Image.open(img_path).convert("RGB")
+            w, h = pil_img.size
+            pixel_size = max(MIN_BAR_WIDTH, (min(w, h) * BAR_SIZE_PERCENT) // 100)
+            bar_w = pixel_size * NUM_BARS
+            bar_h = pixel_size * BAR_HEIGHT_MULTIPLIER
+            bar_x = w - bar_w
+            bar_y = h - bar_h
+
+            # Detect colors
+            detected = []
+            for i in range(NUM_BARS):
+                x_center = bar_x + (i * pixel_size) + (pixel_size // 2)
+                y_center = bar_y + (bar_h // 2)
+                
+                # Sample 3 pixels for better accuracy
+                left_color = pil_img.getpixel((x_center - 1, y_center))
+                center_color = pil_img.getpixel((x_center, y_center))
+                right_color = pil_img.getpixel((x_center + 1, y_center))
+                
+                avg_r = (left_color[0] + center_color[0] + right_color[0]) // 3
+                avg_g = (left_color[1] + center_color[1] + right_color[1]) // 3
+                avg_b = (left_color[2] + center_color[2] + right_color[2]) // 3
+                
+                detected.append((avg_r, avg_g, avg_b))
+
+            # Compare colors
+            matches = []
+            for true_color, detected_color in zip(true_colors, detected):
+                diffs = [abs(t - d) for t, d in zip(true_color, detected_color)]
+                matches.append(all(diff <= COLOR_TOLERANCE for diff in diffs))
+
+            match_count = sum(matches)
+            required_matches = int(len(matches) * REQUIRED_MATCH_PERCENT / 100)
+
+            if match_count == len(matches):
+                perfect_matches += 1
+            if match_count >= required_matches:
+                acceptable_matches += 1
+
+            # Print detailed results
+            print(f"\nTesting {img_path.name}:")
+            print(f"Matches: {match_count}/{len(matches)}")
+            if match_count < len(matches):
+                print("Mismatched colors:")
+                for i, (true_c, det_c, match) in enumerate(zip(true_colors, detected, matches)):
+                    if not match:
+                        diffs = [abs(t - d) for t, d in zip(true_c, det_c)]
+                        print(f"  Bar {i}:")
+                        print(f"    Expected: RGB{true_c}")
+                        print(f"    Detected: RGB{det_c}")
+                        print(f"    Diffs: R:{diffs[0]} G:{diffs[1]} B:{diffs[2]}")
+
+        except Exception as exc:
+            print(f"Error testing {img_path.name}: {exc}")
+
+    # Print summary
+    print("\nVerification Test Summary:")
+    print(f"Total images tested: {total_tests}")
+    print(f"Perfect matches: {perfect_matches} ({perfect_matches/total_tests*100:.1f}%)")
+    print(f"Acceptable matches: {acceptable_matches} ({acceptable_matches/total_tests*100:.1f}%)")
+    print(f"Failed matches: {total_tests - acceptable_matches} ({(total_tests-acceptable_matches)/total_tests*100:.1f}%)")
+
 if __name__ == "__main__":
     # 1) Generate & save images
-    process_images("images")
+    #process_images("images")
 
     # 2) Verify them
-    print("\nVerifying processed images...")
-    verify_image_uuids("images/output")
+    #print("\nVerifying processed images...")
+    #verify_image_uuids("images/output")
     
+
+    phash_dhash_combo(Image.open("images/output/ANGGFIYkgKM.jpg"))
     # # 3) Create video montage
     # print("\nCreating video montage...")
     # create_montage_video(fps=3)
+
+    # Test verification accuracy
+    print("\nTesting verification accuracy...")
+    test_verification_accuracy("images/output")

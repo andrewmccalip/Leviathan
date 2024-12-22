@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Processor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f5f7fa;
+            color: #2d3748;
+            line-height: 1.6;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            padding: 1rem;
+            gap: 2rem;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        /* Update the divider style with more padding */
+        .container::after {
+            content: '';
+            position: absolute;
+            left: calc(33.33% - 1px);
+            top: 2rem;
+            bottom: 2rem;
+            width: 2px;
+            background: linear-gradient(to bottom, 
+                transparent, 
+                #e2e8f0 10%, 
+                #e2e8f0 90%, 
+                transparent
+            );
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Show divider after upload */
+        .container.uploaded::after {
+            opacity: 1;
+        }
+
+        .upload-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            justify-content: center;
+            align-items: center;
+            min-width: 300px;
+            
+        }
+
+        .result-column {
+            flex: 0;
+            width: 0;
+            opacity: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            padding: 2rem 0 2rem 5rem;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            visibility: hidden;
+        }
+
+        .result-column img {
+            max-height: 65%;
+            width: auto;
+            max-width: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Add these new classes for after upload */
+        .container.uploaded {
+            gap: 2rem;
+        }
+
+        .container.uploaded .upload-column {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .container.uploaded .result-column {
+            flex: 2;
+            width: auto;
+            opacity: 1;
+            visibility: visible;
+        }
+
+        @media (max-width: 768px) {
+            .container.uploaded {
+                flex-direction: column;
+            }
+            
+            .container.uploaded .upload-column,
+            .container.uploaded .result-column {
+                width: 100%;
+                padding: 1rem;
+            }
+        }
+
+        h1 {
+            color: #1a202c;
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .drop-zone {
+            width: 100%;
+            height: 40vh;
+            padding: 5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 1.1rem;
+            cursor: pointer;
+            color: #4a5568;
+            border: 3px dashed #cbd5e0;
+            border-radius: 1rem;
+            background-color: white;
+            transition: all 0.3s ease;
+        }
+
+        .drop-zone i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #4299e1;
+        }
+
+        .drop-zone:hover {
+            border-color: #4299e1;
+            color: #4299e1;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(66, 153, 225, 0.1);
+        }
+
+        .drop-zone--over {
+            border-style: solid;
+            border-color: #4299e1;
+            background-color: #ebf8ff;
+        }
+
+        .drop-zone__input {
+            display: none;
+        }
+
+        .drop-zone__thumb {
+            width: 100%;
+            height: 100%;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            background-color: #edf2f7;
+            background-size: cover;
+            position: relative;
+        }
+
+        .drop-zone__thumb::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 0.75rem;
+            color: white;
+            background: rgba(0, 0, 0, 0.75);
+            font-size: 0.875rem;
+            text-align: center;
+        }
+
+        .hash-info {
+            flex-shrink: 0;
+            width: 100%;
+            max-width: 600px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 
+                        0 1px 3px rgba(0, 0, 0, 0.08);
+            overflow-y: auto;
+        }
+
+        .hash-info p {
+            margin: 0.5rem 0;
+            word-break: break-all;
+            line-height: 1.5;
+            color: #2d3748;
+        }
+
+        .hash-info p:first-child {
+            margin-top: 0;
+        }
+
+        .hash-info p:last-child {
+            margin-bottom: 0;
+        }
+
+        .hash-info a {
+            color: #4299e1;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .hash-info a:hover {
+            color: #2b6cb0;
+            text-decoration: underline;
+        }
+
+        .verification-success {
+            background-color: #c6f6d5;
+            color: #2f855a;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin: 1.5rem 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+
+        .verification-success i {
+            margin-right: 0.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: auto;
+                padding: 1rem;
+            }
+            
+            .container::after {
+                display: none;  /* Always hide divider on mobile */
+            }
+            
+            .upload-column,
+            .result-column {
+                width: 100%;
+                padding: 0;
+                height: auto;
+            }
+            
+            .drop-zone {
+                height: 30vh;
+            }
+            
+            .result-panel {
+                max-width: 100%;
+                height: auto;
+                padding: 1rem;
+            }
+
+            .result-panel img {
+                max-height: 50vh;
+            }
+
+            .hash-info {
+                padding: 1rem;
+            }
+        }
+
+        .vertical-divider {
+            width: 1px;
+            background-color: #cbd5e0;
+            height: 100%;
+            margin: 0 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="upload-column">
+            <h1>Image Processor</h1>
+            <div class="drop-zone">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span class="drop-zone__prompt">Drop file here or click to upload</span>
+                <input type="file" name="file" class="drop-zone__input" accept="image/*">
+            </div>
+        </div>
+        <div class="result-column">
+            <h1>Result</h1>
+            <div id="result"></div>
+        </div>
+    </div>
+
+    <script>
+        document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
+            const dropZoneElement = inputElement.closest(".drop-zone");
+
+            dropZoneElement.addEventListener("click", (e) => {
+                inputElement.click();
+            });
+
+            inputElement.addEventListener("change", (e) => {
+                if (inputElement.files.length) {
+                    updateThumbnail(dropZoneElement, inputElement.files[0]);
+                    uploadFile(inputElement.files[0], dropZoneElement);
+                }
+            });
+
+            dropZoneElement.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                dropZoneElement.classList.add("drop-zone--over");
+            });
+
+            ["dragleave", "dragend"].forEach((type) => {
+                dropZoneElement.addEventListener(type, (e) => {
+                    dropZoneElement.classList.remove("drop-zone--over");
+                });
+            });
+
+            dropZoneElement.addEventListener("drop", (e) => {
+                e.preventDefault();
+
+                if (e.dataTransfer.files.length) {
+                    inputElement.files = e.dataTransfer.files;
+                    updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
+                    uploadFile(e.dataTransfer.files[0], dropZoneElement);
+                }
+
+                dropZoneElement.classList.remove("drop-zone--over");
+            });
+        });
+
+        function resetDropZone(dropZoneElement) {
+            // Clear the input
+            const inputElement = dropZoneElement.querySelector(".drop-zone__input");
+            inputElement.value = "";
+
+            // Remove thumbnail if it exists
+            const thumbElement = dropZoneElement.querySelector(".drop-zone__thumb");
+            if (thumbElement) {
+                thumbElement.remove();
+            }
+
+            // Restore the prompt
+            const promptElement = document.createElement("span");
+            promptElement.classList.add("drop-zone__prompt");
+            promptElement.textContent = "Drop file here or click to upload";
+            dropZoneElement.appendChild(promptElement);
+        }
+
+        function uploadFile(file, dropZoneElement) {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            // Add uploaded class to container before fetch
+            document.querySelector('.container').classList.add('uploaded');
+
+            fetch('/process', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('result');
+                if (data.error) {
+                    resultDiv.innerHTML = `<p style="color: #e53e3e;">Error: ${data.error}</p>`;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="result-panel">
+                            <img src="${data.image_url}" alt="Processed image">
+                            <div class="hash-info">
+                                <p>Perceptual Hash: ${data.perceptual_hash}</p>
+                                <p>Color Code Hash: ${data.color_hash}</p>
+                                <p>Image URL: <a href="${data.image_url}" target="_blank">${data.image_url}</a></p>
+                                <p style="color: ${data.verification.success ? '#68d391' : '#fc8181'}">
+                                    Verification: ${data.verification.success ? '✅ Successful' : '❌ Failed'} 
+                                    (${data.verification.matches}/${data.verification.total} bars matched, 
+                                    ${data.verification.required} required)
+                                </p>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Reset the drop zone after successful upload
+                    resetDropZone(dropZoneElement);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = `
+                    <div class="result-panel">
+                        <p style="color: #e53e3e;">Error: ${error}</p>
+                    </div>
+                `;
+            });
+        }
+
+        function updateThumbnail(dropZoneElement, file) {
+            let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+
+            if (dropZoneElement.querySelector(".drop-zone__prompt")) {
+                dropZoneElement.querySelector(".drop-zone__prompt").remove();
+            }
+
+            if (!thumbnailElement) {
+                thumbnailElement = document.createElement("div");
+                thumbnailElement.classList.add("drop-zone__thumb");
+                dropZoneElement.appendChild(thumbnailElement);
+            }
+
+            thumbnailElement.dataset.label = file.name;
+
+            if (file.type.startsWith("image/")) {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
+                };
+            } else {
+                thumbnailElement.style.backgroundImage = null;
+            }
+        }
+    </script>
+</body>
+</html>
