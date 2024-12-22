@@ -1,10 +1,13 @@
 # Configuration Constants
-MAX_IMAGES_TO_PROCESS = 100  # Maximum number of images to process
-BAR_SIZE_PERCENT = 2         # Size of color bar as percentage of smallest image dimension
-COLOR_TOLERANCE = 50         # Tolerance for color matching during verification
-JPG_QUALITY = 100            # JPEG compression quality (0-100)
-REQUIRED_MATCH_PERCENT = 75  # Percentage of squares that must match (14/16 = 87.5%)
-MIN_PIXEL_SIZE = 5          # Minimum size in pixels for each color square
+MAX_IMAGES_TO_PROCESS = 4   # Maximum number of images to process
+BAR_SIZE_PERCENT = 1          # Size of color bar as percentage of smallest image dimension
+COLOR_TOLERANCE = 30          # Tolerance for color matching during verification
+JPG_QUALITY = 85             # JPEG compression quality (0-100)
+REQUIRED_MATCH_PERCENT = 87.5 # Percentage of bars that must match
+MIN_BAR_WIDTH = 5            # Minimum width in pixels for each color bar
+BAR_HEIGHT_MULTIPLIER = 2     # Height will be this times the width
+NUM_BARS = 12                # Number of vertical bars in the color barcode
+NUM_PALETTE_COLORS = 24      # Number of possible colors to choose from
 
 import random
 import time
@@ -13,6 +16,7 @@ from pathlib import Path
 from PIL import Image
 import cv2
 import numpy as np
+import base64
 
 # Seed the random generator with current time
 random.seed(int(time.time()))
@@ -33,20 +37,20 @@ def generate_color_palette(num_colors=24):
         colors.append(color)
     return colors
 
-def generate_color_uuid(img, colors, num_squares=16):
+def generate_color_uuid(img, colors, num_bars=NUM_BARS):
     """
-    Generate a 16-color UUID by randomly picking 16 colors from the palette.
-    Adjacency duplicates are avoided. We encode them as a 96-character hex string
-    (16 squares × 6 hex digits per color). Returns (uuid_colors, uuid_hex).
+    Generate a 24-color UUID by randomly picking 24 colors from the palette.
+    Adjacency duplicates are avoided. We encode them as a 144-character hex string
+    (24 bars × 6 hex digits per color).
     """
     uuid_colors = []
     prev_color = None
 
-    for _ in range(num_squares):
+    for _ in range(num_bars):
         # Choose a random color from the palette
         chosen = random.choice(colors)
 
-        # Avoid identical repeats (adjacent squares)
+        # Avoid identical repeats (adjacent bars)
         if chosen == prev_color:
             alt = [c for c in colors if c != chosen]
             if alt:
@@ -55,43 +59,39 @@ def generate_color_uuid(img, colors, num_squares=16):
         uuid_colors.append(chosen)
         prev_color = chosen
 
-    # Encode to 96-char hex string
+    # Encode to 144-char hex string
     hex_uuid = ""
     for (r, g, b) in uuid_colors:
         hex_uuid += f"{r:02x}{g:02x}{b:02x}"
-    if len(hex_uuid) != num_squares * 6:
-        raise ValueError("Resulting UUID must be 96 characters long.")
+    if len(hex_uuid) != num_bars * 6:
+        raise ValueError("Resulting UUID must be 144 characters long.")
     return uuid_colors, hex_uuid
 
 def create_color_bar(uuid_colors, img_width, img_height):
     """
-    Creates a color bar (16 squares) in RGB mode.
-    The bar is sized according to BAR_SIZE_PERCENT of the smallest image dimension,
-    with a minimum of 5px per square.
+    Creates a vertical color barcode in RGB mode.
+    Each bar's width is based on BAR_SIZE_PERCENT of the smallest image dimension,
+    with a minimum of MIN_BAR_WIDTH pixels. Height is BAR_HEIGHT_MULTIPLIER times the width.
     """
-    num_squares = len(uuid_colors)
-    # Calculate pixel size based on percentage of smallest image dimension
-    pixel_size = max(MIN_PIXEL_SIZE, (min(img_width, img_height) * BAR_SIZE_PERCENT) // 100)
-    bar_width = pixel_size * num_squares
-    bar_height = pixel_size
+    num_bars = len(uuid_colors)
+    # Calculate bar width based on percentage of smallest image dimension
+    bar_width = max(MIN_BAR_WIDTH, (min(img_width, img_height) * BAR_SIZE_PERCENT) // 100)
+    bar_height = bar_width * BAR_HEIGHT_MULTIPLIER
+    total_width = bar_width * num_bars
 
     # Use RGB to avoid alpha-channel issues
-    bar_img = Image.new("RGB", (bar_width, bar_height), color=(255, 255, 255))
+    bar_img = Image.new("RGB", (total_width, bar_height), color=(255, 255, 255))
 
-    # Draw each color square
+    # Draw each color bar
     for i, (r, g, b) in enumerate(uuid_colors):
-        for x in range(pixel_size):
-            for y in range(pixel_size):
-                bar_img.putpixel((i * pixel_size + x, y), (r, g, b))
+        for x in range(bar_width):
+            for y in range(bar_height):
+                bar_img.putpixel((i * bar_width + x, y), (r, g, b))
     return bar_img
 
 def process_images(folder_path="images"):
     """
-    1) Clears/creates the 'output' folder.
-    2) For each valid image in folder_path:
-       - Generate a 16-color UUID (96 chars) from random palette picks.
-       - Draw the color bar on the bottom-right corner.
-       - Save as a PNG with the UUID in the filename.
+    Process images and save them with just the encoded ID as the filename.
     """
     src_folder = Path(folder_path)
     out_folder = src_folder / "output"
@@ -101,7 +101,7 @@ def process_images(folder_path="images"):
     else:
         out_folder.mkdir()
 
-    palette = generate_color_palette(num_colors=24)
+    palette = generate_color_palette(num_colors=NUM_PALETTE_COLORS)
     processed_count = 0
 
     for img_path in src_folder.glob("*"):
@@ -115,8 +115,11 @@ def process_images(folder_path="images"):
         try:
             with Image.open(img_path) as pil_img:
                 img_rgb = pil_img.convert("RGB")
-                uuid_colors, uuid_str = generate_color_uuid(img_rgb, palette, 16)
-
+                uuid_colors, _ = generate_color_uuid(img_rgb, palette, NUM_BARS)
+                
+                # Generate compact URL-safe UUID
+                url_uuid = encode_uuid_for_url(uuid_colors, palette)
+                
                 bar_img = create_color_bar(uuid_colors, img_rgb.width, img_rgb.height)
                 bar_x = img_rgb.width - bar_img.width
                 bar_y = img_rgb.height - bar_img.height
@@ -124,16 +127,13 @@ def process_images(folder_path="images"):
                 new_img = img_rgb.copy()
                 new_img.paste(bar_img, (bar_x, bar_y))
 
-                # Preserve original file extension
-                out_name = f"{img_path.stem}_uuid_{uuid_str}{img_path.suffix}"
-                out_path = out_folder / out_name
-                if out_path.suffix.lower() in ['.jpg', '.jpeg']:
-                    new_img.save(out_path, format="JPEG", quality=JPG_QUALITY)
-                else:
-                    new_img.save(out_path, format="PNG")
+                # Use just the encoded ID as filename
+                out_path = out_folder / f"{url_uuid}.jpg"
+                new_img.save(out_path, format="JPEG", quality=JPG_QUALITY)
 
                 print(f"Processed: {img_path.name}")
-                print(f"UUID: {uuid_str}\n")
+                print(f"Saved as: {url_uuid}.jpg")
+                print(f"URL: yourdomain.com/{url_uuid}\n")
                 processed_count += 1
 
         except Exception as exc:
@@ -141,63 +141,48 @@ def process_images(folder_path="images"):
 
 def verify_image_uuids(folder_path="images/output"):
     """
-    Verifies each processed image by reading the color bar from the bottom-right corner
-    and comparing with the UUID in the filename. Uses ±15 color tolerance.
-    A match requires at least 14 out of 16 squares to meet that tolerance.
+    Verifies each processed image using the filename as the ID.
     """
     src_folder = Path(folder_path)
     if not src_folder.exists():
         print(f"Folder not found: {folder_path}")
         return
 
+    palette = generate_color_palette(num_colors=NUM_PALETTE_COLORS)
     total_count = 0
     success_count = 0
 
-    for img_path in src_folder.glob("*"):
-        # Check only common image extensions
-        if img_path.suffix.lower() not in [".png", ".jpg", ".jpeg", ".bmp"]:
-            continue
-
+    for img_path in src_folder.glob("*.jpg"):
         total_count += 1
         try:
-            # Extract the 96-char UUID from the filename
-            fn_parts = img_path.stem.split("_uuid_")
-            if len(fn_parts) < 2:
-                raise ValueError("Could not extract UUID from filename.")
-            file_uuid = fn_parts[-1]
-            if len(file_uuid) != 96:
-                raise ValueError("Incorrect UUID length; must be 96 chars.")
-
-            # Decode the expected colors from the UUID
-            expected = []
-            for i in range(0, 96, 6):
-                chunk = file_uuid[i:i + 6]
-                r = int(chunk[0:2], 16)
-                g = int(chunk[2:4], 16)
-                b = int(chunk[4:6], 16)
-                expected.append((r, g, b))
-            if len(expected) != 16:
-                raise ValueError("UUID must decode to 16 colors.")
+            # Extract the UUID from the filename (remove .jpg extension)
+            file_uuid = img_path.stem
+            
+            # Decode the expected colors from the URL-safe UUID
+            expected = decode_url_to_colors(file_uuid, palette)
+            if len(expected) != NUM_BARS:
+                raise ValueError(f"UUID must decode to {NUM_BARS} colors.")
 
             pil_img = Image.open(img_path).convert("RGB")
             w, h = pil_img.size
             # Calculate the same pixel size as used in creation
-            pixel_size = max(MIN_PIXEL_SIZE, (min(w, h) * BAR_SIZE_PERCENT) // 100)
-            bar_w = pixel_size * 16
-            bar_h = pixel_size
+            pixel_size = max(MIN_BAR_WIDTH, (min(w, h) * BAR_SIZE_PERCENT) // 100)
+            bar_w = pixel_size * NUM_BARS
+            bar_h = pixel_size * BAR_HEIGHT_MULTIPLIER
             bar_x = w - bar_w
             bar_y = h - bar_h
 
-            # Read each color square from that region
+            # Read each color bar from that region
             detected = []
-            for i in range(16):
+            for i in range(NUM_BARS):
                 x0 = bar_x + i * pixel_size
                 y0 = bar_y
-                # Sample from center 60% of each square
-                margin = int(pixel_size * 0.2)  # 20% margin from edges
+                # Sample from center strip of each bar
+                margin_x = int(pixel_size * 0.3)  # 30% margin from sides
+                margin_y = int(bar_h * 0.1)  # 10% margin from top/bottom
                 sq_pixels = []
-                for xx in range(x0 + margin, x0 + pixel_size - margin):
-                    for yy in range(y0 + margin, y0 + pixel_size - margin):
+                for xx in range(x0 + margin_x, x0 + pixel_size - margin_x):
+                    for yy in range(y0 + margin_y, y0 + bar_h - margin_y):
                         if 0 <= xx < w and 0 <= yy < h:
                             sq_pixels.append(pil_img.getpixel((xx, yy)))
                 if not sq_pixels:
@@ -209,7 +194,7 @@ def verify_image_uuids(folder_path="images/output"):
 
             # Compare detected vs. expected
             matches = []
-            for i in range(16):
+            for i in range(NUM_BARS):
                 exp = expected[i]
                 det = detected[i]
                 diffs = [abs(e - d) for e, d in zip(exp, det)]
@@ -227,7 +212,7 @@ def verify_image_uuids(folder_path="images/output"):
                 for idx, (exp, det, ok) in enumerate(zip(expected, detected, matches)):
                     dr, dg, db = [abs(a - b) for a, b in zip(exp, det)]
                     print(
-                        f"  Square {idx} -> Expected: {exp}, Detected: {det}, "
+                        f"  Bar {idx} -> Expected: {exp}, Detected: {det}, "
                         f"Diff: R:{dr} G:{dg} B:{db}, {'OK' if ok else 'FAIL'}"
                     )
                 print()
@@ -295,6 +280,57 @@ def create_montage_video(folder_path="images/output", fps=5, output_name="montag
     out.release()
     print(f"Video montage saved as {output_name}")
 
+def encode_uuid_for_url(uuid_colors, color_palette):
+    """
+    Encode the UUID colors into a compact base64 URL-safe string.
+    With 24 colors (5 bits needed), we can pack 24 colors into 15 bytes (120 bits).
+    """
+    # Convert colors to their palette indices (0-23)
+    indices = [color_palette.index(color) for color in uuid_colors]
+    
+    # Pack indices into bytes (each index needs 5 bits)
+    packed = 0
+    for idx in indices:
+        packed = (packed << 5) | idx
+    
+    # Convert to bytes
+    bytes_needed = (NUM_BARS * 5 + 7) // 8  # Round up to nearest byte
+    bytes_list = []
+    for i in range(bytes_needed - 1, -1, -1):
+        bytes_list.append((packed >> (i * 8)) & 0xFF)
+    
+    # Convert to URL-safe base64
+    binary_data = bytes(bytes_list)
+    url_safe = base64.urlsafe_b64encode(binary_data).decode('ascii').rstrip('=')
+    return url_safe
+
+def decode_url_to_colors(url_string, color_palette):
+    """
+    Decode a URL-safe string back into RGB colors.
+    """
+    # Add back padding if needed
+    padding = 4 - (len(url_string) % 4)
+    if padding != 4:
+        url_string += '=' * padding
+    
+    # Decode base64 to bytes
+    binary_data = base64.urlsafe_b64decode(url_string)
+    
+    # Convert bytes back to packed value
+    packed = 0
+    for byte in binary_data:
+        packed = (packed << 8) | byte
+    
+    # Extract indices
+    indices = []
+    mask = (1 << 5) - 1  # 5-bit mask
+    for _ in range(NUM_BARS):
+        indices.insert(0, packed & mask)
+        packed >>= 5
+    
+    # Convert indices back to RGB colors
+    return [color_palette[i] for i in indices]
+
 if __name__ == "__main__":
     # 1) Generate & save images
     process_images("images")
@@ -303,6 +339,6 @@ if __name__ == "__main__":
     print("\nVerifying processed images...")
     verify_image_uuids("images/output")
     
-    # 3) Create video montage
-    print("\nCreating video montage...")
-    create_montage_video(fps=3)
+    # # 3) Create video montage
+    # print("\nCreating video montage...")
+    # create_montage_video(fps=3)
