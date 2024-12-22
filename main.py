@@ -14,7 +14,7 @@ from scipy.fftpack import dct
 # Configuration / Constants
 # ─────────────────────────────────────────────────────────
 MAX_IMAGES_TO_PROCESS = 4   # Max number of images for batch processing
-BAR_SIZE_PERCENT = 1        # Color bar size as percent of smallest dimension
+BAR_SIZE_PERCENT = 0.5      # Color bar size as percent of smallest dimension (can be a float)
 COLOR_TOLERANCE = 40        # Tolerance for color-matching
 JPG_QUALITY = 85            # JPEG compression quality
 REQUIRED_MATCH_PERCENT = 75 # % of bars that must match
@@ -139,7 +139,7 @@ def create_color_bar(uuid_colors, img_width, img_height):
     Each bar is a set width and (width * BAR_HEIGHT_MULTIPLIER) in height.
     """
     num_bars = len(uuid_colors)
-    bar_width = max(MIN_BAR_WIDTH, (min(img_width, img_height) * BAR_SIZE_PERCENT) // 100)
+    bar_width = max(MIN_BAR_WIDTH, int((min(img_width, img_height) * BAR_SIZE_PERCENT) / 100))
     bar_height = bar_width * BAR_HEIGHT_MULTIPLIER
     total_width = bar_width * num_bars
 
@@ -157,7 +157,7 @@ def verify_image_colors(img):
     extract the average color of each bar. Returns a list of (R,G,B).
     """
     w, h = img.size
-    bar_width = max(MIN_BAR_WIDTH, (min(w, h) * BAR_SIZE_PERCENT) // 100)
+    bar_width = max(MIN_BAR_WIDTH, int((min(w, h) * BAR_SIZE_PERCENT) / 100))
     bar_height = bar_width * BAR_HEIGHT_MULTIPLIER
     total_width = bar_width * NUM_BARS
     bar_x = w - total_width

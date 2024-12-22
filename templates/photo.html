@@ -117,19 +117,47 @@
 
         .image-wrapper {
             width: 100%;
+            min-height: 40vh;
             display: flex;
             justify-content: center;
             align-items: center;
             background: var(--surface);
             border-radius: 24px;
             padding: 1.5rem;
+            position: relative;
         }
 
-        .image-details img {
-            max-width: 100%;
-            max-height: 600px;
+        .image-link {
+            display: block;
+            width: auto;
+            height: 40vh;
+        }
+
+        .image-wrapper img {
+            width: auto;
+            height: 100%;
             object-fit: contain;
-            border-radius: 12px;
+            border-radius: 12px 12px 0 12px !important;
+            background: var(--surface);
+        }
+
+        .download-icon-link {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            z-index: 10;
+            text-decoration: none;
+        }
+
+        .download-icon {
+            color: var(--text-secondary);
+            opacity: 0.5;
+            font-size: 1.25rem;
+            transition: opacity 0.2s ease;
+        }
+
+        .download-icon-link:hover .download-icon {
+            opacity: 0.8;
         }
 
         .details-content {
@@ -227,6 +255,22 @@
         .user-link:hover {
             color: var(--text);
         }
+
+        .download-hint {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 0.5rem 0 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .download-hint i {
+            font-size: 0.75rem;
+            opacity: 0.7;
+        }
     </style>
 </head>
 <body>
@@ -239,7 +283,16 @@
 
         <div class="image-details">
             <div class="image-wrapper">
-                <img src="/images/output/{{ color_hash }}.jpg" alt="Image">
+                <a href="/images/output/{{ color_hash }}.jpg" download class="download-icon-link">
+                    <i class="fas fa-download download-icon"></i>
+                </a>
+                <a href="/images/output/{{ color_hash }}.jpg" download class="image-link">
+                    <img src="/images/output/{{ color_hash }}.jpg" alt="Image">
+                </a>
+            </div>
+            <div class="download-hint">
+                <i class="fas fa-download"></i>
+                Click image to download
             </div>
             <div class="details-content">
                 <table class="color-bar-table">

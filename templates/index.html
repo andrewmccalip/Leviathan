@@ -2,7 +2,10 @@
 <html>
 <head>
     <title>Image Processor</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" 
+          integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" 
+          crossorigin="anonymous" 
+          referrerpolicy="no-referrer" />
     <style>
         :root {
             --surface-dark: #09090B;    /* Zinc 950 */
@@ -104,7 +107,7 @@
             text-align: center;
             cursor: pointer;
             transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(255, 255, 255, 0.03); 
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
         }
@@ -187,9 +190,6 @@
             background: var(--surface-bright);
             border-radius: 1rem;
             padding: 1.5rem;
-            height: 100%;
-            overflow-x: hidden;  /* Prevent horizontal scroll */
-            overflow-y: auto;    /* Allow vertical scroll if needed */
             border: 1px solid rgba(255, 255, 255, 0.03);
             display: flex;
             flex-direction: column;
@@ -197,11 +197,12 @@
         }
 
         .result-panel img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 24px 24px 0 24px;  /* Top-left, Top-right, Bottom-right, Bottom-left */
-            margin: 0 auto 1.5rem;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            width: auto;
+            height: 40vh;
+            object-fit: contain;
+            border-radius: 12px 12px 0 12px !important;
+            margin-bottom: 1.5rem;
+            background: var(--surface);
         }
 
         .user-nav {
@@ -215,7 +216,7 @@
             align-items: center;
             padding: 0.75rem 1.5rem;
             background: linear-gradient(90deg, 
-                rgba(255, 255, 255, 0.08),
+                rgba(255, 255, 255, 0.08), 
                 rgba(255, 255, 255, 0.06)
             );
             color: var(--text);
@@ -263,12 +264,9 @@
 
         .hash-info {
             width: 100%;
-            max-width: 100%;
-            box-sizing: border-box;
             background: var(--surface-bright);
             border-radius: 0.75rem;
             padding: 1.25rem;
-            margin-top: 1rem;
             font-size: 0.875rem;
             border: 1px solid rgba(255, 255, 255, 0.03);
         }
@@ -403,6 +401,70 @@
 
         .drop-zone__input {
             display: none;  /* Hide the file input completely */
+        }
+
+        .image-wrapper {
+            width: 100%;
+            min-height: 40vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--surface);
+            border-radius: 24px;
+            padding: 1.5rem;
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        .image-link {
+            display: block;
+            width: auto;
+            height: 40vh;
+        }
+
+        .image-wrapper img {
+            width: auto;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 12px 12px 0 12px !important;
+            background: var(--surface);
+        }
+
+        .download-icon-link {
+            position: absolute !important;
+            top: 2rem !important;
+            right: 2rem !important;
+            z-index: 100 !important;
+            text-decoration: none;
+            display: block !important;
+        }
+
+        .download-icon {
+            color: var(--text-secondary);
+            opacity: 0.5;
+            font-size: 1.25rem;
+            transition: opacity 0.2s ease;
+            display: block !important;
+        }
+
+        .download-icon:hover {
+            opacity: 0.8;
+        }
+
+        .download-hint {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 0.5rem 0 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .download-hint i {
+            font-size: 0.75rem;
+            opacity: 0.7;
         }
     </style>
 </head>
@@ -679,6 +741,67 @@
             } else {
                 thumbnailElement.style.backgroundImage = null;
             }
+        }
+
+        function showResult(data) {
+            const resultDiv = document.getElementById('result');
+            if (data.error) {
+                console.log("Error in data:", data.error);
+                resultDiv.innerHTML = `<p style="color: var(--error);">Error: ${data.error}</p>`;
+                return;
+            }
+
+            const colors = data.color_pattern || [];
+            
+            const htmlContent = `
+                <div class="result-panel">
+                    <div class="image-wrapper">
+                        <a href="${data.image_url}" download class="image-link">
+                            <img src="${data.image_url}" alt="Processed image" onload="addDownloadElements(this)">
+                        </a>
+                    </div>
+                    <div class="hash-info">
+                        <div class="metadata-item">
+                            <span class="metadata-label">Download</span>
+                            <a href="${data.image_url}" download style="color: var(--accent); text-decoration: none;">
+                                <i class="fas fa-download"></i> Save Image
+                            </a>
+                        </div>
+                        <table class="color-bar-table" style="margin: 1rem 0;">
+                            <tr>
+                                ${colors.map(color => `
+                                    <td class="color-cell" 
+                                        style="background-color: rgb(${color[0]}, ${color[1]}, ${color[2]})">
+                                    </td>
+                                `).join('')}
+                            </tr>
+                        </table>
+                        <p>URL: <a href="/${data.color_hash}" target="_blank">/${data.color_hash}</a></p>
+                        <p>Perceptual Hash: ${data.perceptual_hash || 'N/A'}</p>
+                        <p>Color Hash: ${data.color_hash || 'N/A'}</p>
+                    </div>
+                </div>
+            `;
+
+            resultDiv.innerHTML = htmlContent;
+        }
+
+        function addDownloadElements(img) {
+            const wrapper = img.closest('.image-wrapper');
+            
+            // Add download icon
+            const downloadLink = document.createElement('a');
+            downloadLink.href = img.src;
+            downloadLink.download = '';
+            downloadLink.className = 'download-icon-link';
+            downloadLink.innerHTML = '<i class="fas fa-download download-icon"></i>';
+            wrapper.appendChild(downloadLink);
+            
+            // Add download hint
+            const hint = document.createElement('div');
+            hint.className = 'download-hint';
+            hint.innerHTML = '<i class="fas fa-download"></i>Click image to download';
+            wrapper.parentNode.insertBefore(hint, wrapper.nextSibling);
         }
     </script>
 </body>
