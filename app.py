@@ -1,9 +1,14 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, redirect, url_for, session
 from werkzeug.utils import secure_filename
 from PIL import Image
 import os
 from pathlib import Path
 import sqlite3
+from os import environ as env
+from authlib.integrations.flask_client import OAuth
+from dotenv import load_dotenv, find_dotenv
+from urllib.parse import quote_plus, urlencode
+from functools import wraps
 
 from main import (
     init_db,
@@ -30,6 +35,24 @@ os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 # Initialize the database on startup
 init_db()
 
+# Load .env file
+load_dotenv()
+
+# Auth0 config
+oauth = OAuth(app)
+oauth.register(
+    "auth0",
+    client_id=env.get("AUTH0_CLIENT_ID"),
+    client_secret=env.get("AUTH0_CLIENT_SECRET"),
+    client_kwargs={
+        "scope": "openid profile email",
+    },
+    server_metadata_url=f'https://{env.get("AUTH0_DOMAIN")}/.well-known/openid-configuration'
+)
+
+# Make sure you have a secret key set
+app.secret_key = env.get("FLASK_SECRET_KEY", "your-secret-key-here")
+
 def upgrade_db():
     conn = sqlite3.connect('images.db')
     c = conn.cursor()
@@ -41,6 +64,14 @@ def upgrade_db():
         pass
     finally:
         conn.close()
+
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user' not in session:
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return decorated
 
 @app.route('/')
 def index():
@@ -54,16 +85,13 @@ def serve_image(filename):
 
 @app.route('/process', methods=['POST'])
 def process_image():
-    """
-    Handles encoding images. Accepts a single file, processes it by:
-    1. Converting to RGB.
-    2. Generating a combined hash (perceptual + difference).
-    3. Generating deterministic color bars from hash.
-    4. Storing the image + color bars + hash data.
-    5. Returning JSON with success status and the new image URL.
-    """
+    """Process image and store with user ID from Auth0"""
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
+    
+    # Get Auth0 user ID from session, using the correct path to 'sub'
+    user_id = session.get('user', {}).get('userinfo', {}).get('sub', 'anonymous')
+    print(f"Processing image for user: {user_id}")  # Debug print
     
     file = request.files['file']
     if not file or file.filename.strip() == '':
@@ -74,8 +102,9 @@ def process_image():
         perceptual_hash = phash_dhash_combo(img)
         uuid_colors, color_hash = generate_color_uuid_from_hash(img, None, perceptual_hash)
 
-        # Store in DB
-        store_image_hashes(perceptual_hash, color_hash)
+        # Store in DB with Auth0 user ID
+        store_image_hashes(perceptual_hash, color_hash, user_id)
+        print(f"Stored image with user_id: {user_id}")  # Debug print
 
         # Create color bar and paste onto the image
         bar_img = create_color_bar(uuid_colors, img.width, img.height)
@@ -226,12 +255,14 @@ def show_image(color_hash):
     except Exception as e:
         return f"Error: {str(e)}", 500
 
-@app.route('/user/<int:user_id>')  # Sample URL: /user/1
+@app.route('/user/<user_id>')  # Changed from int:user_id to just user_id
 def show_user_gallery(user_id):
     """Display all images created by a specific user."""
     try:
         conn = sqlite3.connect('images.db')
         c = conn.cursor()
+        
+        print(f"Fetching gallery for user: {user_id}")  # Debug print
         
         # Get all images for this user
         c.execute('''
@@ -280,6 +311,61 @@ def show_user_gallery(user_id):
 
     except Exception as e:
         return f"Error: {str(e)}", 500
+
+@app.route("/login")
+def login():
+    return oauth.auth0.authorize_redirect(
+        redirect_uri=url_for("callback", _external=True)
+    )
+
+@app.route("/callback", methods=["GET", "POST"])
+def callback():
+    token = oauth.auth0.authorize_access_token()
+    session["user"] = token
+    
+    # Print user info to console
+    user_info = token['userinfo']
+    print("\nUser Login Details:")
+    print(f"User ID: {user_info['sub']}")  # This is the unique Auth0 ID
+    print(f"Email: {user_info.get('email', 'No email')}")
+    print(f"Name: {user_info.get('name', 'No name')}")
+    print(f"Full token data: {token}\n")
+    
+    # Store the user ID in session for easy access
+    session['user_id'] = user_info['sub']
+    
+    return redirect("/")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(
+        "https://" + env.get("AUTH0_DOMAIN")
+        + "/v2/logout?"
+        + urlencode(
+            {
+                "returnTo": url_for("index", _external=True),
+                "client_id": env.get("AUTH0_CLIENT_ID"),
+            },
+            quote_via=quote_plus,
+        )
+    )
+
+@app.route('/protected')
+@requires_auth
+def protected():
+    return 'This is protected'
+
+# Add this helper function to get current user ID
+def get_current_user_id():
+    if 'user_id' in session:
+        # Extract just the numeric portion from the Auth0 ID
+        # Auth0 IDs look like 'auth0|1234567890'
+        auth0_id = session['user_id']
+        if '|' in auth0_id:
+            return int(auth0_id.split('|')[1])
+        return auth0_id
+    return None
 
 if __name__ == '__main__':
     init_db()

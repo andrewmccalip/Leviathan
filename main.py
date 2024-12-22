@@ -39,7 +39,7 @@ def init_db():
     c.execute('''
         CREATE TABLE IF NOT EXISTS image_hashes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL DEFAULT 1,
+            user_id TEXT NOT NULL,
             perceptual_hash TEXT NOT NULL,
             color_hash TEXT NOT NULL,
             query_count INTEGER DEFAULT 0,
@@ -50,10 +50,10 @@ def init_db():
     conn.commit()
     conn.close()
 
-def store_image_hashes(perceptual_hash, color_hash, user_id=1):
+def store_image_hashes(perceptual_hash, color_hash, user_id='anonymous'):
     """
     Insert the combination of perceptual_hash and color_hash into DB.
-    Ignores if it's already there (unique constraint).
+    Now accepts the Auth0 user ID directly.
     """
     conn = sqlite3.connect('images.db')
     c = conn.cursor()
