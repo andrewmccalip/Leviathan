@@ -409,7 +409,6 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            background: var(--surface);
             border-radius: 24px;
             padding: 1.5rem;
             position: relative;
@@ -420,6 +419,7 @@
             display: block;
             width: auto;
             height: 40vh;
+            position: relative;
         }
 
         .image-wrapper img {
@@ -431,24 +431,28 @@
         }
 
         .download-icon-link {
-            position: absolute !important;
-            top: 2rem !important;
-            right: 2rem !important;
-            z-index: 100 !important;
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            z-index: 100;
             text-decoration: none;
-            display: block !important;
+            background: rgba(24, 24, 27, 0.8);
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            transition: all 0.2s ease;
+        }
+
+        .download-icon-link:hover {
+            background: rgba(24, 24, 27, 0.95);
+            transform: translateY(-1px);
         }
 
         .download-icon {
-            color: var(--text-secondary);
-            opacity: 0.5;
+            color: var(--text);
             font-size: 1.25rem;
-            transition: opacity 0.2s ease;
-            display: block !important;
-        }
-
-        .download-icon:hover {
-            opacity: 0.8;
+            display: block;
         }
 
         .download-hint {
@@ -603,12 +607,15 @@
                     return;
                 }
 
-                // Use color_pattern directly from the response
                 const colors = data.color_pattern || [];
                 
                 resultDiv.innerHTML = `
                     <div class="result-panel">
-                        <img src="${data.image_url}" alt="Processed image">
+                        <div class="image-wrapper">
+                            <a href="${data.image_url}" download class="image-link">
+                                <img src="${data.image_url}" alt="Processed image" onload="addDownloadElements(this)">
+                            </a>
+                        </div>
                         <div class="hash-info">
                             <table class="color-bar-table" style="margin-bottom: 1rem;">
                                 <tr>
@@ -673,7 +680,11 @@
 
                 resultDiv.innerHTML = `
                     <div class="result-panel">
-                        <img src="${imageUrl}" alt="Verified image">
+                        <div class="image-wrapper">
+                            <a href="${imageUrl}" download="verified_image.jpg" class="image-link">
+                                <img src="${imageUrl}" alt="Verified image" onload="addDownloadElements(this)">
+                            </a>
+                        </div>
                         <div class="hash-info">
                             <div class="color-bars-container">
                                 <h3>Generated Color Pattern</h3>
@@ -787,7 +798,7 @@
         }
 
         function addDownloadElements(img) {
-            const wrapper = img.closest('.image-wrapper');
+            const imageLink = img.closest('.image-link');
             
             // Add download icon
             const downloadLink = document.createElement('a');
@@ -795,13 +806,7 @@
             downloadLink.download = '';
             downloadLink.className = 'download-icon-link';
             downloadLink.innerHTML = '<i class="fas fa-download download-icon"></i>';
-            wrapper.appendChild(downloadLink);
-            
-            // Add download hint
-            const hint = document.createElement('div');
-            hint.className = 'download-hint';
-            hint.innerHTML = '<i class="fas fa-download"></i>Click image to download';
-            wrapper.parentNode.insertBefore(hint, wrapper.nextSibling);
+            imageLink.appendChild(downloadLink);
         }
     </script>
 </body>
