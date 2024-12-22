@@ -4,6 +4,18 @@
     <title>User Gallery - User {{ user_id }}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        :root {
+            --surface: rgb(9, 9, 11);
+            --surface-bright: rgb(24, 24, 27);
+            --surface-brighter: rgb(39, 39, 45);
+            --text: rgb(250, 250, 250);
+            --text-secondary: rgb(161, 161, 170);
+            --accent: rgb(0, 119, 237);
+            --accent-dark: rgb(0, 89, 178);
+            --success: rgb(16, 185, 129);
+            --error: rgb(239, 68, 68);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,16 +24,49 @@
         }
 
         body {
-            background-color: #f5f7fa;
-            color: #2d3748;
+            background-color: var(--surface);
+            color: var(--text);
             line-height: 1.6;
-            padding: 1.5rem;
             min-height: 100vh;
         }
 
         .container {
             max-width: 1200px;
-            margin: 0 auto;
+            margin: 64px auto 0;
+            padding: 1.5rem;
+            background: radial-gradient(
+                circle at top center,
+                rgba(255, 255, 255, 0.03) 0%,
+                rgba(24, 24, 27, 0) 50%
+            );
+        }
+
+        .auth-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            padding: 0 1.5rem;
+            background: rgba(9, 9, 11, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .brand {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text);
+            text-decoration: none;
+            background: linear-gradient(90deg, var(--text), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
         }
 
         .header {
@@ -29,120 +74,192 @@
         }
 
         .back-link {
-            display: inline-block;
-            margin-bottom: 1rem;
-            color: #3b82f6;
+            display: inline-flex;
+            align-items: center;
+            padding: 0.75rem 1.5rem;
+            color: var(--text);
             text-decoration: none;
-            font-size: 0.85rem;
+            font-size: 0.875rem;
+            background: linear-gradient(90deg, 
+                rgba(255, 255, 255, 0.08),
+                rgba(255, 255, 255, 0.06)
+            );
+            border-radius: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s ease;
         }
 
         .back-link:hover {
-            color: #2563eb;
-            text-decoration: underline;
+            transform: translateY(-1px);
+            background: linear-gradient(90deg, 
+                rgba(255, 255, 255, 0.1),
+                rgba(255, 255, 255, 0.08)
+            );
+            border-color: rgba(255, 255, 255, 0.1);
         }
 
         .back-link i {
             margin-right: 0.5rem;
+            color: var(--accent-dark);
         }
 
         .user-info {
-            background: white;
-            padding: 1rem;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            background: rgb(32, 32, 35);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.03);
             margin-bottom: 1.5rem;
+            background: linear-gradient(
+                90deg,
+                rgb(32, 32, 35) 0%,
+                rgb(28, 28, 31) 100%
+            );
         }
 
         .user-info h1 {
-            font-size: 1.5rem;
-            color: #1a202c;
-            margin-bottom: 0.5rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            background: linear-gradient(90deg, var(--text), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
         .stats {
             display: flex;
             gap: 2rem;
-            font-size: 0.9rem;
-            color: #4a5568;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
         }
 
         .gallery {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 1.5rem;
         }
 
         .image-card {
-            background: white;
-            border-radius: 8px;
+            background: rgb(32, 32, 35);
+            border-radius: 1rem;
             overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            transition: all 0.2s ease;
+            background: linear-gradient(
+                90deg,
+                rgb(32, 32, 35) 0%,
+                rgb(28, 28, 31) 100%
+            );
         }
 
         .image-card:hover {
-            transform: translateY(-2px);
-        }
-
-        .image-card a {
-            text-decoration: none;
-            color: inherit;
+            transform: translateY(-1px);
+            background: linear-gradient(
+                90deg,
+                rgb(36, 36, 39) 0%,
+                rgb(32, 32, 35) 100%
+            );
+            border-color: rgba(255, 255, 255, 0.05);
         }
 
         .image-card img {
             width: 100%;
             height: 200px;
             object-fit: cover;
+            border-radius: 24px 24px 0 24px;
         }
 
         .image-info {
-            padding: 0.75rem;
+            padding: 1rem 1.5rem;
         }
 
         .color-bar {
-            height: 20px;
+            height: 16px;
             display: flex;
-            margin-bottom: 0.5rem;
+            gap: 2px;
+            margin-bottom: 1rem;
+            opacity: 0.6;
+            transition: opacity 0.2s ease;
+        }
+
+        .color-bar:hover {
+            opacity: 0.9;
         }
 
         .color-segment {
             flex: 1;
+            border-radius: 3px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .color-segment::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.3) 0%,
+                rgba(255, 255, 255, 0.1) 25%,
+                rgba(255, 255, 255, 0) 50%,
+                rgba(0, 0, 0, 0.05) 75%,
+                rgba(0, 0, 0, 0.1) 100%
+            );
+            pointer-events: none;
         }
 
         .image-metadata {
-            font-size: 0.8rem;
-            color: #4a5568;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            background: rgb(28, 28, 31);
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.03);
         }
 
         .image-metadata p {
-            margin: 0.25rem 0;
             display: flex;
             justify-content: space-between;
+            gap: 1rem;
         }
 
         .empty-state {
             text-align: center;
             padding: 3rem;
-            background: white;
-            border-radius: 8px;
-            color: #4a5568;
+            background: var(--surface-bright);
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            color: var(--text-secondary);
         }
 
         .empty-state i {
             font-size: 3rem;
             margin-bottom: 1rem;
-            color: #cbd5e0;
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 768px) {
+            .gallery {
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            }
         }
     </style>
 </head>
 <body>
+    <div class="auth-container">
+        <a href="/" class="brand">taggr</a>
+    </div>
+
     <div class="container">
         <div class="header">
             <a href="/" class="back-link">
                 <i class="fas fa-arrow-left"></i>Back to Upload
             </a>
             <div class="user-info">
-                <h1>User {{ user_id }}'s Gallery</h1>
+                <h1>User Gallery</h1>
                 <div class="stats">
                     <span>Total Images: {{ images|length }}</span>
                     <span>Total Queries: {{ total_queries }}</span>
