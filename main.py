@@ -42,6 +42,7 @@ def init_db():
             user_id INTEGER NOT NULL DEFAULT 1,
             perceptual_hash TEXT NOT NULL,
             color_hash TEXT NOT NULL,
+            query_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(perceptual_hash, color_hash)
         )
@@ -176,3 +177,30 @@ def verify_image_colors(img):
         avg_b = (left_color[2] + center_color[2] + right_color[2]) // 3
         detected.append((avg_r, avg_g, avg_b))
     return detected
+
+def decode_url_to_colors(url_uuid, palette=None):
+    """
+    Decode a base64 URL-safe string back into a list of RGB tuples.
+    The palette parameter is not used but kept for API compatibility.
+    """
+    # Add back padding if needed
+    padding_needed = len(url_uuid) % 4
+    if padding_needed:
+        url_uuid += '=' * (4 - padding_needed)
+
+    # Decode base64 to bytes
+    try:
+        binary_data = base64.urlsafe_b64decode(url_uuid)
+        
+        # Convert bytes back to RGB tuples
+        colors = []
+        for i in range(0, len(binary_data), 3):
+            r = binary_data[i]
+            g = binary_data[i + 1]
+            b = binary_data[i + 2]
+            colors.append((r, g, b))
+        
+        return colors
+    except Exception as e:
+        print(f"Error decoding colors: {e}")
+        return []

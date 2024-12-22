@@ -553,9 +553,8 @@
                     </td>
                 `).join('');
 
-                const knownUrl = `/images/output/${data.color_hash}.jpg`;
                 const urlDisplay = data.database_verification 
-                    ? `<p>URL: <a href="${knownUrl}" target="_blank">${knownUrl}</a></p>`
+                    ? `<p>URL: <a href="/${data.color_hash}" target="_blank">/${data.color_hash}</a></p>`
                     : '';
 
                 resultDiv.innerHTML = `

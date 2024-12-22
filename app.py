@@ -14,7 +14,8 @@ from main import (
     create_color_bar,
     COLOR_TOLERANCE,
     REQUIRED_MATCH_PERCENT,
-    JPG_QUALITY
+    JPG_QUALITY,
+    decode_url_to_colors
 )
 
 app = Flask(__name__)
@@ -28,6 +29,18 @@ os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
 # Initialize the database on startup
 init_db()
+
+def upgrade_db():
+    conn = sqlite3.connect('images.db')
+    c = conn.cursor()
+    try:
+        c.execute('ALTER TABLE image_hashes ADD COLUMN query_count INTEGER DEFAULT 0')
+        conn.commit()
+    except sqlite3.OperationalError:
+        # Column might already exist
+        pass
+    finally:
+        conn.close()
 
 @app.route('/')
 def index():
@@ -167,5 +180,108 @@ def verify_image():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/<color_hash>')
+def show_image(color_hash):
+    """Display details for a specific image by its color hash."""
+    try:
+        # Query the database for image details and increment counter
+        conn = sqlite3.connect('images.db')
+        c = conn.cursor()
+        
+        # First, increment the query counter
+        c.execute('''
+            UPDATE image_hashes 
+            SET query_count = query_count + 1 
+            WHERE color_hash = ?
+        ''', (color_hash,))
+        
+        # Then fetch all details including the updated counter
+        c.execute('''
+            SELECT user_id, perceptual_hash, created_at, query_count 
+            FROM image_hashes 
+            WHERE color_hash = ?
+        ''', (color_hash,))
+        
+        result = c.fetchone()
+        conn.commit()
+        conn.close()
+
+        if not result:
+            return "Image not found", 404
+
+        user_id, perceptual_hash, created_at, query_count = result
+        
+        # Decode the color hash back to RGB values
+        colors = decode_url_to_colors(color_hash)
+
+        return render_template('photo.html',
+            color_hash=color_hash,
+            perceptual_hash=perceptual_hash,
+            user_id=user_id,
+            created_at=created_at,
+            query_count=query_count,
+            colors=colors
+        )
+
+    except Exception as e:
+        return f"Error: {str(e)}", 500
+
+@app.route('/user/<int:user_id>')  # Sample URL: /user/1
+def show_user_gallery(user_id):
+    """Display all images created by a specific user."""
+    try:
+        conn = sqlite3.connect('images.db')
+        c = conn.cursor()
+        
+        # Get all images for this user
+        c.execute('''
+            SELECT color_hash, perceptual_hash, created_at, query_count 
+            FROM image_hashes 
+            WHERE user_id = ? 
+            ORDER BY created_at DESC
+        ''', (user_id,))
+        
+        results = c.fetchall()
+        
+        # Calculate user stats
+        c.execute('''
+            SELECT 
+                COUNT(*) as total_images,
+                SUM(query_count) as total_queries,
+                MIN(created_at) as first_upload
+            FROM image_hashes 
+            WHERE user_id = ?
+        ''', (user_id,))
+        
+        stats = c.fetchone()
+        conn.close()
+
+        # Process the results
+        images = []
+        for color_hash, perceptual_hash, created_at, query_count in results:
+            colors = decode_url_to_colors(color_hash)
+            images.append({
+                'color_hash': color_hash,
+                'perceptual_hash': perceptual_hash,
+                'created_at': created_at,
+                'query_count': query_count,
+                'colors': colors
+            })
+
+        total_queries = stats[1] or 0
+        first_upload = stats[2] or 'No uploads yet'
+
+        return render_template('user.html',
+            user_id=user_id,
+            images=images,
+            total_queries=total_queries,
+            first_upload=first_upload
+        )
+
+    except Exception as e:
+        return f"Error: {str(e)}", 500
+
 if __name__ == '__main__':
+    init_db()
+    upgrade_db()
     app.run(debug=True) 

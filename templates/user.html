@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Gallery - User {{ user_id }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f5f7fa;
+            color: #2d3748;
+            line-height: 1.6;
+            padding: 1.5rem;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            margin-bottom: 1.5rem;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: #3b82f6;
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        .back-link:hover {
+            color: #2563eb;
+            text-decoration: underline;
+        }
+
+        .back-link i {
+            margin-right: 0.5rem;
+        }
+
+        .user-info {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        .user-info h1 {
+            font-size: 1.5rem;
+            color: #1a202c;
+            margin-bottom: 0.5rem;
+        }
+
+        .stats {
+            display: flex;
+            gap: 2rem;
+            font-size: 0.9rem;
+            color: #4a5568;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .image-card {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .image-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .image-card a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .image-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+
+        .image-info {
+            padding: 0.75rem;
+        }
+
+        .color-bar {
+            height: 20px;
+            display: flex;
+            margin-bottom: 0.5rem;
+        }
+
+        .color-segment {
+            flex: 1;
+        }
+
+        .image-metadata {
+            font-size: 0.8rem;
+            color: #4a5568;
+        }
+
+        .image-metadata p {
+            margin: 0.25rem 0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            background: white;
+            border-radius: 8px;
+            color: #4a5568;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #cbd5e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-link">
+                <i class="fas fa-arrow-left"></i>Back to Upload
+            </a>
+            <div class="user-info">
+                <h1>User {{ user_id }}'s Gallery</h1>
+                <div class="stats">
+                    <span>Total Images: {{ images|length }}</span>
+                    <span>Total Queries: {{ total_queries }}</span>
+                    <span>First Upload: {{ first_upload }}</span>
+                </div>
+            </div>
+        </div>
+
+        {% if images %}
+        <div class="gallery">
+            {% for image in images %}
+            <div class="image-card">
+                <a href="/{{ image.color_hash }}">
+                    <img src="/images/output/{{ image.color_hash }}.jpg" alt="Image">
+                    <div class="image-info">
+                        <div class="color-bar">
+                            {% for color in image.colors %}
+                            <div class="color-segment" style="background-color: rgb({{ color[0] }}, {{ color[1] }}, {{ color[2] }})"></div>
+                            {% endfor %}
+                        </div>
+                        <div class="image-metadata">
+                            <p>
+                                <span>Created:</span>
+                                <span>{{ image.created_at }}</span>
+                            </p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-images"></i>
+            <p>No images found.</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html> 

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Details - {{ color_hash }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f5f7fa;
+            color: #2d3748;
+            line-height: 1.6;
+            padding: 1.5rem;
+            display: flex;
+            justify-content: center;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            max-height: calc(100vh - 3rem);
+            overflow-y: auto;
+        }
+
+        .result-panel {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .result-panel img {
+            max-height: calc(100vh - 24rem);
+            width: auto;
+            max-width: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hash-info {
+            font-family: 'Monaco', 'Consolas', monospace;
+            background: white;
+            padding: 1rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            margin-top: 0.75rem;
+        }
+
+        .hash-info p {
+            margin: 0.25rem 0;
+            word-break: break-all;
+            line-height: 1.4;
+            color: #2d3748;
+        }
+
+        .color-bars-container {
+            margin: 0.25rem 0;
+            padding: 0.5rem;
+            background: #f7fafc;
+            border-radius: 8px;
+        }
+
+        .color-bars-container h3 {
+            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+            color: #2d3748;
+        }
+
+        .color-bar-table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: collapse;
+            margin: 0;
+        }
+
+        .color-cell {
+            height: 20px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .metadata {
+            margin-top: 0.75rem;
+            padding: 0.75rem;
+            background: #f8fafc;
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+
+        .metadata-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .metadata-item:last-child {
+            border-bottom: none;
+        }
+
+        .metadata-label {
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .metadata-value {
+            color: #334155;
+            font-family: 'Monaco', 'Consolas', monospace;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 0.75rem;
+            color: #3b82f6;
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        .back-link:hover {
+            color: #2563eb;
+            text-decoration: underline;
+        }
+
+        .back-link i {
+            margin-right: 0.5rem;
+        }
+
+        @media screen and (max-height: 800px) {
+            .result-panel img {
+                max-height: calc(100vh - 28rem);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">
+            <i class="fas fa-arrow-left"></i>Back to Upload
+        </a>
+        
+        <div class="result-panel">
+            <img src="/images/output/{{ color_hash }}.jpg" alt="Image">
+            
+            <div class="hash-info">
+                <div class="color-bars-container">
+                    <h3>Color Pattern</h3>
+                    <table class="color-bar-table">
+                        <tr>
+                            {% for color in colors %}
+                            <td class="color-cell" style="background-color: rgb({{ color[0] }}, {{ color[1] }}, {{ color[2] }})"></td>
+                            {% endfor %}
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="metadata">
+                    <div class="metadata-item">
+                        <span class="metadata-label">Color Hash</span>
+                        <span class="metadata-value">{{ color_hash }}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Perceptual Hash</span>
+                        <span class="metadata-value">{{ perceptual_hash }}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Created By</span>
+                        <span class="metadata-value">User {{ user_id }}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Created At</span>
+                        <span class="metadata-value">{{ created_at }}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Number of Queries</span>
+                        <span class="metadata-value">{{ query_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
