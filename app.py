@@ -130,6 +130,7 @@ def process_image():
             'perceptual_hash': perceptual_hash,
             'color_hash': color_hash,
             'image_url': f'/images/output/{color_hash}.jpg',
+            'color_pattern': uuid_colors,
             'verification': {
                 'success': match_count >= required_matches,
                 'matches': match_count,

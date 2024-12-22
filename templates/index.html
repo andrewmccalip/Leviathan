@@ -98,15 +98,23 @@
         }
 
         .drop-zone {
-            border: 2px dashed rgba(255, 255, 255, 0.08);
-            border-radius: 0.75rem;
-            padding: 2rem;
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 2.5rem;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s ease;
-            background: var(--surface);
-            position: relative;
-            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .drop-zone:hover, .drop-zone--over {
+            border-color: var(--accent);
+            background: rgba(255, 255, 255, 0.06);
+            box-shadow: 
+                0 0 0 4px rgba(0, 119, 237, 0.12),
+                inset 0 1px 3px rgba(0, 0, 0, 0.1);
         }
 
         .drop-zone--over {
@@ -180,8 +188,20 @@
             border-radius: 1rem;
             padding: 1.5rem;
             height: 100%;
-            overflow-y: auto;
+            overflow-x: hidden;  /* Prevent horizontal scroll */
+            overflow-y: auto;    /* Allow vertical scroll if needed */
             border: 1px solid rgba(255, 255, 255, 0.03);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .result-panel img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 24px 24px 0 24px;  /* Top-left, Top-right, Bottom-right, Bottom-left */
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
         .user-nav {
@@ -242,7 +262,10 @@
         }
 
         .hash-info {
-            background: var(--surface);
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            background: var(--surface-bright);
             border-radius: 0.75rem;
             padding: 1.25rem;
             margin-top: 1rem;
@@ -265,6 +288,10 @@
             color: var(--text);
         }
 
+        .verification-status {
+            margin: 1rem 0;
+        }
+
         .verification-status p {
             padding: 0.75rem;
             border-radius: 0.75rem;
@@ -282,6 +309,14 @@
             background: rgba(239, 68, 68, 0.1);
             color: var(--error);
             border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .hash-details {
+            margin-top: 1rem;
+        }
+
+        .hash-details p {
+            margin: 0.5rem 0;
         }
 
         @media (max-width: 768px) {
@@ -303,6 +338,71 @@
 
         .upload-section, .result-panel {
             animation: fadeIn 0.3s ease-out;
+        }
+
+        .color-bars-container {
+            margin: 1rem 0;
+        }
+
+        .color-bars-container h3 {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+        }
+
+        .color-bar-table {
+            width: 100%;
+            table-layout: fixed;
+            border-spacing: 4px;
+            border-collapse: separate;
+            margin: 0.5rem 0;
+        }
+
+        .color-cell {
+            height: 24px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .color-cell::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.5) 0%,
+                rgba(255, 255, 255, 0.2) 25%,
+                rgba(255, 255, 255, 0) 50%,
+                rgba(0, 0, 0, 0.1) 75%,
+                rgba(0, 0, 0, 0.2) 100%
+            );
+            pointer-events: none;
+        }
+
+        .color-cell:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .color-cell:hover::before {
+            background: linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.6) 0%,
+                rgba(255, 255, 255, 0.3) 25%,
+                rgba(255, 255, 255, 0.1) 50%,
+                rgba(0, 0, 0, 0.15) 75%,
+                rgba(0, 0, 0, 0.25) 100%
+            );
+        }
+
+        .drop-zone__input {
+            display: none;  /* Hide the file input completely */
         }
     </style>
 </head>
@@ -330,7 +430,7 @@
                 <h2>Encode Image</h2>
                 <div class="drop-zone" id="encode-drop">
                     <i class="fas fa-cloud-upload-alt"></i>
-                    <span class="drop-zone__prompt">Drop file here or click to upload</span>
+                    <span class="drop-zone__prompt">Drop or click to upload</span>
                     <input type="file" name="file" class="drop-zone__input" accept="image/*" data-mode="encode">
                 </div>
             </div>
@@ -339,7 +439,7 @@
                 <h2>Verify Image</h2>
                 <div class="drop-zone" id="decode-drop">
                     <i class="fas fa-search"></i>
-                    <span class="drop-zone__prompt">Drop image to verify</span>
+                    <span class="drop-zone__prompt">Drop or click to verify</span>
                     <input type="file" name="file" class="drop-zone__input" accept="image/*" data-mode="decode">
                 </div>
             </div>
@@ -437,23 +537,29 @@
             .then(data => {
                 const resultDiv = document.getElementById('result');
                 if (data.error) {
-                    resultDiv.innerHTML = `<p style="color: #e53e3e;">Error: ${data.error}</p>`;
+                    resultDiv.innerHTML = `<p style="color: var(--error);">Error: ${data.error}</p>`;
                     return;
                 }
+
+                // Use color_pattern directly from the response
+                const colors = data.color_pattern || [];
+                
                 resultDiv.innerHTML = `
                     <div class="result-panel">
                         <img src="${data.image_url}" alt="Processed image">
                         <div class="hash-info">
-                            <p>Perceptual Hash: ${data.perceptual_hash}</p>
-                            <p>Color Hash: ${data.color_hash}</p>
-                            <p>Image URL: <a href="${data.image_url}" target="_blank">
-                                ${data.image_url}</a></p>
-                            <p style="color: ${data.verification.success ? '#68d391' : '#fc8181'}">
-                                Verification: 
-                                ${data.verification.success ? '✅ Successful' : '❌ Failed'} 
-                                (${data.verification.matches}/${data.verification.total} bars 
-                                matched, ${data.verification.required} required)
-                            </p>
+                            <table class="color-bar-table" style="margin-bottom: 1rem;">
+                                <tr>
+                                    ${colors.map(color => `
+                                        <td class="color-cell" 
+                                            style="background-color: rgb(${color[0]}, ${color[1]}, ${color[2]})">
+                                        </td>
+                                    `).join('')}
+                                </tr>
+                            </table>
+                            <p>URL: <a href="/${data.color_hash}" target="_blank">/${data.color_hash}</a></p>
+                            <p>Perceptual Hash: ${data.perceptual_hash || 'N/A'}</p>
+                            <p>Color Hash: ${data.color_hash || 'N/A'}</p>
                         </div>
                     </div>
                 `;
@@ -463,7 +569,7 @@
                 console.error('Error:', error);
                 document.getElementById('result').innerHTML = `
                     <div class="result-panel">
-                        <p style="color: #e53e3e;">Error: ${error}</p>
+                        <p style="color: var(--error);">Error: ${error}</p>
                     </div>
                 `;
             });
