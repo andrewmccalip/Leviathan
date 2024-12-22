@@ -22,14 +22,12 @@
         .container {
             display: flex;
             min-height: 20vh;
-          
             gap: 2rem;
             background-color: #f7fafc;
             position: relative;
             transition: all 0.3s ease;
         }
 
-        /* Update the divider style with more padding */
         .container::after {
             content: '';
             position: absolute;
@@ -48,7 +46,6 @@
             transition: opacity 0.3s ease;
         }
 
-        /* Show divider after upload */
         .container.uploaded::after {
             opacity: 1;
         }
@@ -104,7 +101,6 @@
             margin-right: auto;
         }
 
-        /* Add these new classes for after upload */
         .container.uploaded {
             gap: 2rem;
         }
@@ -270,7 +266,7 @@
             }
             
             .container::after {
-                display: none;  /* Always hide divider on mobile */
+                display: none;
             }
             
             .upload-column,
@@ -326,17 +322,6 @@
             border-radius: 8px;
             margin-bottom: 0.5rem;
             display: block;
-        }
-
-        .hash-info {
-            flex-shrink: 0;
-            width: 100%;
-            max-width: 600px;
-            font-family: 'Monaco', 'Consolas', monospace;
-            background: white;
-            padding: 1rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
         .decode .drop-zone {
@@ -427,7 +412,6 @@
         </div>
         
         <div class="result-column">
-           
             <div id="result"></div>
         </div>
     </div>
@@ -437,11 +421,11 @@
             const dropZoneElement = inputElement.closest(".drop-zone");
             const mode = inputElement.dataset.mode;
 
-            dropZoneElement.addEventListener("click", (e) => {
+            dropZoneElement.addEventListener("click", () => {
                 inputElement.click();
             });
 
-            inputElement.addEventListener("change", (e) => {
+            inputElement.addEventListener("change", () => {
                 if (inputElement.files.length) {
                     updateThumbnail(dropZoneElement, inputElement.files[0]);
                     if (mode === 'encode') {
@@ -458,14 +442,13 @@
             });
 
             ["dragleave", "dragend"].forEach((type) => {
-                dropZoneElement.addEventListener(type, (e) => {
+                dropZoneElement.addEventListener(type, () => {
                     dropZoneElement.classList.remove("drop-zone--over");
                 });
             });
 
             dropZoneElement.addEventListener("drop", (e) => {
                 e.preventDefault();
-
                 if (e.dataTransfer.files.length) {
                     inputElement.files = e.dataTransfer.files;
                     updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
@@ -475,23 +458,19 @@
                         verifyFile(e.dataTransfer.files[0], dropZoneElement);
                     }
                 }
-
                 dropZoneElement.classList.remove("drop-zone--over");
             });
         });
 
         function resetDropZone(dropZoneElement) {
-            // Clear the input
             const inputElement = dropZoneElement.querySelector(".drop-zone__input");
             inputElement.value = "";
 
-            // Remove thumbnail if it exists
             const thumbElement = dropZoneElement.querySelector(".drop-zone__thumb");
             if (thumbElement) {
                 thumbElement.remove();
             }
 
-            // Restore the prompt
             const promptElement = document.createElement("span");
             promptElement.classList.add("drop-zone__prompt");
             promptElement.textContent = "Drop file here or click to upload";
@@ -502,7 +481,6 @@
             const formData = new FormData();
             formData.append("file", file);
 
-            // Add uploaded class to container before fetch
             document.querySelector('.container').classList.add('uploaded');
 
             fetch('/process', {
@@ -514,26 +492,106 @@
                 const resultDiv = document.getElementById('result');
                 if (data.error) {
                     resultDiv.innerHTML = `<p style="color: #e53e3e;">Error: ${data.error}</p>`;
-                } else {
+                    return;
+                }
+                resultDiv.innerHTML = `
+                    <div class="result-panel">
+                        <img src="${data.image_url}" alt="Processed image">
+                        <div class="hash-info">
+                            <p>Perceptual Hash: ${data.perceptual_hash}</p>
+                            <p>Color Hash: ${data.color_hash}</p>
+                            <p>Image URL: <a href="${data.image_url}" target="_blank">
+                                ${data.image_url}</a></p>
+                            <p style="color: ${data.verification.success ? '#68d391' : '#fc8181'}">
+                                Verification: 
+                                ${data.verification.success ? '✅ Successful' : '❌ Failed'} 
+                                (${data.verification.matches}/${data.verification.total} bars 
+                                matched, ${data.verification.required} required)
+                            </p>
+                        </div>
+                    </div>
+                `;
+                resetDropZone(dropZoneElement);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = `
+                    <div class="result-panel">
+                        <p style="color: #e53e3e;">Error: ${error}</p>
+                    </div>
+                `;
+            });
+        }
+
+        function verifyFile(file, dropZoneElement) {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            document.querySelector('.container').classList.add('uploaded');
+
+            fetch('/verify', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('result');
+                const imageUrl = URL.createObjectURL(file);
+                
+                if (data.error) {
                     resultDiv.innerHTML = `
                         <div class="result-panel">
-                            <img src="${data.image_url}" alt="Processed image">
-                            <div class="hash-info">
-                                <p>Perceptual Hash: ${data.perceptual_hash}</p>
-                                <p>Color Hash: ${data.color_hash}</p>
-                                <p>Image URL: <a href="${data.image_url}" target="_blank">${data.image_url}</a></p>
-                                <p style="color: ${data.verification.success ? '#68d391' : '#fc8181'}">
-                                    Verification: ${data.verification.success ? '✅ Successful' : '❌ Failed'} 
-                                    (${data.verification.matches}/${data.verification.total} bars matched, 
-                                    ${data.verification.required} required)
-                                </p>
-                            </div>
+                            <p style="color: #e53e3e;">Error: ${data.error}</p>
                         </div>
                     `;
-                    
-                    // Reset the drop zone after successful upload
-                    resetDropZone(dropZoneElement);
+                    return;
                 }
+
+                const colorBar = data.matches.details.map(detail => `
+                    <td class="color-cell" 
+                        style="background-color: rgb(${detail.expected.join(',')})">
+                    </td>
+                `).join('');
+
+                const knownUrl = `/images/output/${data.color_hash}.jpg`;
+                const urlDisplay = data.database_verification 
+                    ? `<p>URL: <a href="${knownUrl}" target="_blank">${knownUrl}</a></p>`
+                    : '';
+
+                resultDiv.innerHTML = `
+                    <div class="result-panel">
+                        <img src="${imageUrl}" alt="Verified image">
+                        <div class="hash-info">
+                            <div class="color-bars-container">
+                                <h3>Generated Color Pattern</h3>
+                                <table class="color-bar-table">
+                                    <tr>${colorBar}</tr>
+                                </table>
+                            </div>
+                            <div class="verification-status">
+                                <p class="color-status ${data.color_verification ? 'success' : 'failure'}">
+                                    Color Match:
+                                    ${data.color_verification ? 'VALID ✅' : 'INVALID ❌'}
+                                    (${data.matches.count}/${data.matches.total} bars matched)
+                                </p>
+                                <p class="database-status ${data.database_verification ? 'success' : 'failure'}">
+                                    Database Match:
+                                    ${data.database_verification ? 'FOUND ✅' : 'NOT FOUND ❌'}
+                                </p>
+                            </div>
+                            ${urlDisplay}
+                            <div class="hash-details">
+                                <p><strong>Perceptual Hash:</strong> ${data.perceptual_hash}</p>
+                                <p><strong>Color Hash:</strong> ${data.color_hash}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                const img = resultDiv.querySelector('img');
+                img.onload = () => URL.revokeObjectURL(imageUrl);
+                
+                resetDropZone(dropZoneElement);
             })
             .catch(error => {
                 console.error('Error:', error);
@@ -548,8 +606,9 @@
         function updateThumbnail(dropZoneElement, file) {
             let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
 
-            if (dropZoneElement.querySelector(".drop-zone__prompt")) {
-                dropZoneElement.querySelector(".drop-zone__prompt").remove();
+            const existingPrompt = dropZoneElement.querySelector(".drop-zone__prompt");
+            if (existingPrompt) {
+                existingPrompt.remove();
             }
 
             if (!thumbnailElement) {
@@ -569,68 +628,6 @@
             } else {
                 thumbnailElement.style.backgroundImage = null;
             }
-        }
-
-        function verifyFile(file, dropZoneElement) {
-            const formData = new FormData();
-            formData.append("file", file);
-
-            document.querySelector('.container').classList.add('uploaded');
-
-            fetch('/verify', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                const resultDiv = document.getElementById('result');
-                const imageUrl = URL.createObjectURL(file);
-                
-                // Create simple color bar visualization
-                const colorBar = data.matches.details.map((detail, index) => `
-                    <td class="color-cell" 
-                        style="background-color: rgb(${detail.expected.join(',')})">
-                    </td>
-                `).join('');
-
-                resultDiv.innerHTML = `
-                    <div class="result-panel">
-                        <img src="${imageUrl}" alt="Verified image">
-                        <div class="hash-info">
-                            <div class="color-bars-container">
-                                <h3>Generated Color Pattern</h3>
-                                <table class="color-bar-table">
-                                    <tr>${colorBar}</tr>
-                                </table>
-                            </div>
-                            <div class="verification-status">
-                                <p class="color-status ${data.color_verification ? 'success' : 'failure'}">
-                                    Color Match: ${data.color_verification ? 'VALID ✅' : 'INVALID ❌'}
-                                    (${data.matches.count}/${data.matches.total} bars matched)
-                                </p>
-                                <p class="database-status ${data.database_verification ? 'success' : 'failure'}">
-                                    Database Match: ${data.database_verification ? 'FOUND ✅' : 'NOT FOUND ❌'}
-                                </p>
-                            </div>
-                            <div class="hash-details">
-                                <p><strong>Perceptual Hash:</strong> ${data.perceptual_hash}</p>
-                                <p><strong>Color Hash:</strong> ${data.color_hash}</p>
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                const img = resultDiv.querySelector('img');
-                img.onload = () => URL.revokeObjectURL(imageUrl);
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('result').innerHTML = `
-                    <div class="result-panel">
-                        <p style="color: #e53e3e;">Error: ${error}</p>
-                    </div>
-                `;
-            });
         }
     </script>
 </body>
