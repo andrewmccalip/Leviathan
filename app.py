@@ -18,9 +18,15 @@ from main import (
     generate_color_uuid_from_hash,
     create_color_bar,
     phash_dhash_combo,
-    decode_url_to_colors
+    decode_url_to_colors,
+    init_db,
+    store_image_hashes,
+    verify_image_uuids,
+    encode_uuid_for_url,
+    verify_image_colors  # Import the new function
 )
 from pathlib import Path
+import sqlite3
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -31,6 +37,9 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+# Initialize database when app starts
+init_db()
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -52,10 +61,12 @@ def process_image():
         # Create a PIL Image from the uploaded file
         img = Image.open(file.stream).convert('RGB')
         
-        # Generate color UUID
-        palette = generate_color_palette(NUM_PALETTE_COLORS)
+        # Generate color UUID using same process as main.py
         perceptual_hash = phash_dhash_combo(img)
-        uuid_colors, color_hash = generate_color_uuid_from_hash(img, palette, perceptual_hash)
+        uuid_colors, color_hash = generate_color_uuid_from_hash(img, None, perceptual_hash)
+        
+        # Store in database
+        store_image_hashes(perceptual_hash, color_hash)
         
         # Create and add color bar
         bar_img = create_color_bar(uuid_colors, img.width, img.height)
@@ -69,34 +80,13 @@ def process_image():
         output_path = Path('images/output') / f"{color_hash}.jpg"
         new_img.save(output_path, format="JPEG", quality=JPG_QUALITY)
         
-        # Verify immediately after saving
-        w, h = new_img.size
-        pixel_size = max(MIN_BAR_WIDTH, (min(w, h) * BAR_SIZE_PERCENT) // 100)
-        bar_w = pixel_size * NUM_BARS
-        bar_h = pixel_size * BAR_HEIGHT_MULTIPLIER
-        bar_x = w - bar_w
-        bar_y = h - bar_h
-
-        # Detect colors
-        detected = []
-        for i in range(NUM_BARS):
-            x_center = bar_x + (i * pixel_size) + (pixel_size // 2)
-            y_center = bar_y + (bar_h // 2)
-            
-            # Sample multiple pixels for accuracy
-            left_color = new_img.getpixel((x_center - 1, y_center))
-            center_color = new_img.getpixel((x_center, y_center))
-            right_color = new_img.getpixel((x_center + 1, y_center))
-            
-            avg_r = (left_color[0] + center_color[0] + right_color[0]) // 3
-            avg_g = (left_color[1] + center_color[1] + right_color[1]) // 3
-            avg_b = (left_color[2] + center_color[2] + right_color[2]) // 3
-            
-            detected.append((avg_r, avg_g, avg_b))
-
+        # Verify using the same verification function
+        detected = verify_image_colors(new_img)
+        expected = decode_url_to_colors(color_hash)
+        
         # Compare with expected colors
         matches = []
-        for exp, det in zip(uuid_colors, detected):
+        for exp, det in zip(expected, detected):
             diffs = [abs(e - d) for e, d in zip(exp, det)]
             matches.append(all(df <= COLOR_TOLERANCE for df in diffs))
 
@@ -124,63 +114,95 @@ def process_image():
 def serve_image(filename):
     return send_file(f'images/output/{filename}')
 
-@app.route('/verify/<color_hash>')
-def verify_hash(color_hash):
+@app.route('/verify', methods=['POST'])
+def verify_image():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
     try:
-        # Find the image
-        image_path = Path('images/output') / f"{color_hash}.jpg"
-        if not image_path.exists():
-            return jsonify({'error': 'Image not found'}), 404
-
-        # Generate color palette
-        palette = generate_color_palette(num_colors=NUM_PALETTE_COLORS)
+        # Read the image
+        img = Image.open(file.stream).convert('RGB')
         
-        # Get expected colors from hash
-        expected = decode_url_to_colors(color_hash, palette)
+        # Calculate perceptual hash
+        perceptual_hash = phash_dhash_combo(img)
+        print(f"Perceptual Hash: {perceptual_hash}")
         
-        # Read and verify image
-        with Image.open(image_path) as pil_img:
-            pil_img = pil_img.convert("RGB")
-            w, h = pil_img.size
-            pixel_size = max(MIN_BAR_WIDTH, (min(w, h) * BAR_SIZE_PERCENT) // 100)
-            bar_w = pixel_size * NUM_BARS
-            bar_h = pixel_size * BAR_HEIGHT_MULTIPLIER
-            bar_x = w - bar_w
-            bar_y = h - bar_h
+        # Generate colors using the same method as encode
+        uuid_colors, color_hash = generate_color_uuid_from_hash(img, None, perceptual_hash)
+        print(f"Generated Color Hash: {color_hash}")
+        
+        # Detect colors from the image for verification
+        detected = verify_image_colors(img)
+        print(f"Detected Colors: {detected}")
+        
+        # Look up in database
+        conn = sqlite3.connect('images.db')
+        c = conn.cursor()
+        c.execute('''
+            SELECT user_id, created_at 
+            FROM image_hashes 
+            WHERE perceptual_hash = ? AND color_hash = ?
+        ''', (perceptual_hash, color_hash))
+        exact_match = c.fetchone()
+        
+        # Then check for any matches with same color hash
+        c.execute('''
+            SELECT perceptual_hash, user_id, created_at 
+            FROM image_hashes 
+            WHERE color_hash = ?
+        ''', (color_hash,))
+        color_matches = c.fetchall()
+        conn.close()
 
-            # Detect colors
-            detected = []
-            for i in range(NUM_BARS):
-                x_center = bar_x + (i * pixel_size) + (pixel_size // 2)
-                y_center = bar_y + (bar_h // 2)
-                
-                # Sample multiple pixels for better accuracy
-                left_color = pil_img.getpixel((x_center - 1, y_center))
-                center_color = pil_img.getpixel((x_center, y_center))
-                right_color = pil_img.getpixel((x_center + 1, y_center))
-                
-                avg_r = (left_color[0] + center_color[0] + right_color[0]) // 3
-                avg_g = (left_color[1] + center_color[1] + right_color[1]) // 3
-                avg_b = (left_color[2] + center_color[2] + right_color[2]) // 3
-                
-                detected.append((avg_r, avg_g, avg_b))
-
-            # Compare colors
-            matches = []
-            for exp, det in zip(expected, detected):
-                diffs = [abs(e - d) for e, d in zip(exp, det)]
-                matches.append(all(df <= COLOR_TOLERANCE for df in diffs))
-
-            match_count = sum(matches)
-            required_matches = int(len(matches) * REQUIRED_MATCH_PERCENT / 100)
-            
-            return jsonify({
-                'success': match_count >= required_matches,
-                'matches': match_count,
-                'total': len(matches)
-            })
-
+        # Compare expected vs detected colors
+        matches = []
+        for exp, det in zip(uuid_colors, detected):
+            diffs = [abs(e - d) for e, d in zip(exp, det)]
+            matches.append(all(df <= COLOR_TOLERANCE for df in diffs))
+        
+        match_count = sum(matches)
+        required_matches = int(len(matches) * REQUIRED_MATCH_PERCENT / 100)
+        
+        response_data = {
+            'color_verification': match_count >= required_matches,
+            'database_verification': exact_match is not None,
+            'verified': exact_match is not None and match_count >= required_matches,
+            'perceptual_hash': perceptual_hash,
+            'color_hash': color_hash,
+            'user_id': exact_match[0] if exact_match else None,
+            'created_at': exact_match[1] if exact_match else None,
+            'similar_images': [
+                {
+                    'perceptual_hash': ph,
+                    'user_id': uid,
+                    'created_at': ca
+                } for ph, uid, ca in color_matches
+            ] if color_matches else [],
+            'matches': {
+                'count': match_count,
+                'required': required_matches,
+                'total': len(matches),
+                'details': [
+                    {
+                        'bar': i,
+                        'expected': exp,
+                        'detected': det,
+                        'matched': match,
+                        'diffs': [abs(e - d) for e, d in zip(exp, det)]
+                    }
+                    for i, (exp, det, match) in enumerate(zip(uuid_colors, detected, matches))
+                ]
+            }
+        }
+        print(f"Response: {response_data}")
+        return jsonify(response_data)
+        
     except Exception as e:
+        print(f"Error verifying image: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

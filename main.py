@@ -18,6 +18,8 @@ import cv2
 import numpy as np
 import base64
 from scipy.fftpack import dct
+import sqlite3
+from datetime import datetime
 
 # Seed the random generator with current time
 random.seed(int(time.time()))
@@ -43,16 +45,18 @@ def generate_color_uuid_from_hash(img, colors, hash_value, num_bars=NUM_BARS):
     Generate a deterministic sequence of colors from a 64-bit hash.
     Now generates absolute RGB values instead of using a palette.
     """
-    # Convert hash to integer
+    # Convert hash to integer and use it directly (no time-based seed)
     seed_value = int(hash_value, 16)
-    random.seed(seed_value)
+    
+    # Create a separate random instance instead of using global random
+    rng = random.Random(seed_value)
     
     # Generate deterministic colors
     uuid_colors = []
     for _ in range(NUM_BARS):
-        r = random.randint(0, 255)
-        g = random.randint(0, 255)
-        b = random.randint(0, 255)
+        r = rng.randint(0, 255)
+        g = rng.randint(0, 255)
+        b = rng.randint(0, 255)
         uuid_colors.append((r, g, b))
     
     # Create color hash using base64 encoding
@@ -108,7 +112,11 @@ def process_images(folder_path="images"):
         try:
             with Image.open(img_path) as pil_img:
                 img_rgb = pil_img.convert("RGB")
-                uuid_colors, _ = generate_color_uuid_from_hash(img_rgb, palette, phash_dhash_combo(img_rgb))
+                perceptual_hash = phash_dhash_combo(img_rgb)
+                uuid_colors, color_hash = generate_color_uuid_from_hash(img_rgb, palette, perceptual_hash)
+                
+                # Store hashes in database
+                store_image_hashes(perceptual_hash, color_hash)
                 
                 # Generate compact URL-safe UUID
                 url_uuid = encode_uuid_for_url(uuid_colors, palette)
@@ -308,17 +316,11 @@ def decode_url_to_colors(url_string, color_palette=None):
     
     return colors
 
-def phash_dhash_combo(image, hash_size=4):
+def phash_dhash_combo(image, hash_size=4):  # hash_size=4 gives 64-bit hash
     """
     Calculate a 64-bit hash using a combination of perceptual hash (phash) and difference hash (dhash).
     """
-    # Get dhash bits first
-    dhash_image = image.convert('L').resize((hash_size + 1, hash_size), Image.Resampling.LANCZOS)
-    dhash_pixels = np.array(dhash_image.getdata(), dtype=float).reshape((hash_size, hash_size + 1))
-    dhash_bits = ''.join(['1' if dhash_pixels[i, j] > dhash_pixels[i, j + 1] else '0'
-                          for i in range(hash_size) for j in range(hash_size)])
-
-    # Then get phash bits
+    # Convert to grayscale and resize for phash
     phash_image = image.convert('L').resize((hash_size, hash_size), Image.Resampling.LANCZOS)
     phash_pixels = np.array(phash_image.getdata(), dtype=float).reshape((hash_size, hash_size))
     dct_result = dct(dct(phash_pixels, axis=0), axis=1)
@@ -326,9 +328,15 @@ def phash_dhash_combo(image, hash_size=4):
     avg = (dct_low[0, 1:].sum() + dct_low[1:, :].sum()) / (hash_size * hash_size - 1)
     phash_bits = ''.join(['1' if val >= avg else '0' for val in dct_low.flatten()[1:]])
 
-    # Put dhash bits first, then phash bits
-    combined_bits = dhash_bits + phash_bits
-    hashcode = hex(int(combined_bits, 2))[2:].rjust(16, '0')
+    # Convert to grayscale and resize for dhash
+    dhash_image = image.convert('L').resize((hash_size + 1, hash_size), Image.Resampling.LANCZOS)
+    dhash_pixels = np.array(dhash_image.getdata(), dtype=float).reshape((hash_size, hash_size + 1))
+    dhash_bits = ''.join(['1' if dhash_pixels[i, j] > dhash_pixels[i, j + 1] else '0'
+                          for i in range(hash_size) for j in range(hash_size)])
+
+    # Combine phash and dhash bits
+    combined_bits = phash_bits + dhash_bits
+    hashcode = hex(int(combined_bits, 2))[2:].rjust(16, '0')  # 16 hex chars = 64 bits
 
     print(f"Hash: {hashcode}")
     return hashcode
@@ -417,6 +425,92 @@ def test_verification_accuracy(folder_path="images/output"):
     print(f"Perfect matches: {perfect_matches} ({perfect_matches/total_tests*100:.1f}%)")
     print(f"Acceptable matches: {acceptable_matches} ({acceptable_matches/total_tests*100:.1f}%)")
     print(f"Failed matches: {total_tests - acceptable_matches} ({(total_tests-acceptable_matches)/total_tests*100:.1f}%)")
+
+def init_db():
+    """Initialize the SQLite database and create tables if they don't exist"""
+    conn = sqlite3.connect('images.db')
+    c = conn.cursor()
+    
+    # Create table for image hashes
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS image_hashes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            perceptual_hash TEXT NOT NULL,
+            color_hash TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(perceptual_hash, color_hash)
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+def store_image_hashes(perceptual_hash, color_hash, user_id=1):
+    """Store image hashes in the database"""
+    conn = sqlite3.connect('images.db')
+    c = conn.cursor()
+    
+    try:
+        c.execute('''
+            INSERT INTO image_hashes (user_id, perceptual_hash, color_hash)
+            VALUES (?, ?, ?)
+        ''', (user_id, perceptual_hash, color_hash))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        # Hash combination already exists
+        pass
+    finally:
+        conn.close()
+
+def get_image_hashes(user_id=1):
+    """Retrieve all image hashes for a user"""
+    conn = sqlite3.connect('images.db')
+    c = conn.cursor()
+    
+    c.execute('''
+        SELECT perceptual_hash, color_hash, created_at
+        FROM image_hashes
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+    ''', (user_id,))
+    
+    results = c.fetchall()
+    conn.close()
+    return results
+
+def verify_image_colors(img):
+    """
+    Verifies colors in an image and returns detected colors, matches, and match count.
+    Takes a PIL Image object directly instead of a path.
+    """
+    w, h = img.size
+    # Calculate the same pixel size as used in creation
+    pixel_size = max(MIN_BAR_WIDTH, (min(w, h) * BAR_SIZE_PERCENT) // 100)
+    bar_w = pixel_size * NUM_BARS
+    bar_h = pixel_size * BAR_HEIGHT_MULTIPLIER
+    bar_x = w - bar_w
+    bar_y = h - bar_h
+
+    # Read each color bar from that region
+    detected = []
+    for i in range(NUM_BARS):
+        x_center = bar_x + (i * pixel_size) + (pixel_size // 2)
+        y_center = bar_y + (bar_h // 2)
+        
+        # Get the center pixel and its neighbors
+        left_color = img.getpixel((x_center - 1, y_center))
+        center_color = img.getpixel((x_center, y_center))
+        right_color = img.getpixel((x_center + 1, y_center))
+        
+        # Average the colors
+        avg_r = (left_color[0] + center_color[0] + right_color[0]) // 3
+        avg_g = (left_color[1] + center_color[1] + right_color[1]) // 3
+        avg_b = (left_color[2] + center_color[2] + right_color[2]) // 3
+        
+        detected.append((avg_r, avg_g, avg_b))
+
+    return detected
 
 if __name__ == "__main__":
     # 1) Generate & save images
