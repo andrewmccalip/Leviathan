@@ -21,9 +21,10 @@
 
         .container {
             display: flex;
-            height: 100vh;
-            padding: 1rem;
+            min-height: 20vh;
+            padding: 2rem;
             gap: 2rem;
+            background-color: #f7fafc;
             position: relative;
             transition: all 0.3s ease;
         }
@@ -55,9 +56,11 @@
         .upload-column {
             flex: 1;
             display: flex;
+            max-height: 80vh;
             flex-direction: column;
             gap: 2rem;
             padding: 2rem;
+            min-height: 0;
         }
 
         .upload-section {
@@ -65,6 +68,7 @@
             display: flex;
             flex-direction: column;
             gap: 1rem;
+            min-height: 0;
         }
 
         .upload-section h2 {
@@ -72,6 +76,7 @@
             font-size: 1.25rem;
             font-weight: 600;
             text-align: center;
+            margin: 0;
         }
 
         .result-column {
@@ -80,7 +85,6 @@
             opacity: 0;
             display: flex;
             flex-direction: column;
-            align-items: center;
             height: 100vh;
             padding: 0;
             overflow: hidden;
@@ -115,7 +119,8 @@
             width: auto;
             opacity: 1;
             visibility: visible;
-            padding: 2rem 0 2rem 5rem;
+            padding: 2rem;
+            overflow-y: auto;
         }
 
         @media (max-width: 768px) {
@@ -139,7 +144,8 @@
 
         .drop-zone {
             width: 100%;
-            height: 25vh;  /* Half height of previous */
+            flex: 1;
+            min-height: 200px;
             padding: 2rem;
             display: flex;
             flex-direction: column;
@@ -303,21 +309,23 @@
         .result-panel {
             flex: 1;
             width: 100%;
-            height: calc(100vh - 4rem);
+            height: 100%;
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 2rem;
             padding: 2rem;
+            overflow-y: auto;
         }
 
         .result-panel img {
-            max-width: 100%;
             max-height: 50vh;
             width: auto;
-            height: auto;
+            max-width: 100%;
             object-fit: contain;
             border-radius: 8px;
+            margin-bottom: 1rem;
+            display: block;
         }
 
         .hash-info {
@@ -328,13 +336,13 @@
             background: white;
             padding: 1.5rem;
             border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 
-                        0 1px 3px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
         .decode .drop-zone {
             border-color: #4299e1;
             background-color: #ebf8ff;
+            flex: 1;
         }
 
         .decode .drop-zone i {
@@ -397,7 +405,7 @@
         </div>
         
         <div class="result-column">
-            <h1>Result</h1>
+           
             <div id="result"></div>
         </div>
     </div>
@@ -490,7 +498,7 @@
                             <img src="${data.image_url}" alt="Processed image">
                             <div class="hash-info">
                                 <p>Perceptual Hash: ${data.perceptual_hash}</p>
-                                <p>Color Code Hash: ${data.color_hash}</p>
+                                <p>Color Hash: ${data.color_hash}</p>
                                 <p>Image URL: <a href="${data.image_url}" target="_blank">${data.image_url}</a></p>
                                 <p style="color: ${data.verification.success ? '#68d391' : '#fc8181'}">
                                     Verification: ${data.verification.success ? '✅ Successful' : '❌ Failed'} 
@@ -544,51 +552,58 @@
         function verifyFile(file, dropZoneElement) {
             const formData = new FormData();
             formData.append("file", file);
-            
+
+            // Add uploaded class to container before fetch
+            document.querySelector('.container').classList.add('uploaded');
+
             fetch('/verify', {
                 method: 'POST',
                 body: formData
             })
             .then(response => response.json())
             .then(data => {
-                document.querySelector(".container").classList.add("uploaded");
-                displayResults(data);
-                resetDropZone(dropZoneElement);
+                const resultDiv = document.getElementById('result');
+                
+                // Create object URL for the uploaded image
+                const imageUrl = URL.createObjectURL(file);
+                
+                resultDiv.innerHTML = `
+                    <div class="result-panel">
+                        <img src="${imageUrl}" alt="Verified image">
+                        <div class="hash-info">
+                            <div class="verification-status">
+                                <p class="status ${data.verified ? 'success' : 'failure'}">
+                                    Overall Status: ${data.verified ? 'VERIFIED ✅' : 'NOT VERIFIED ❌'}
+                                </p>
+                                <p class="color-status ${data.color_verification ? 'success' : 'failure'}">
+                                    Color Match: ${data.color_verification ? 'VALID ✅' : 'INVALID ❌'}
+                                </p>
+                                <p class="database-status ${data.database_verification ? 'success' : 'failure'}">
+                                    Database Match: ${data.database_verification ? 'FOUND ✅' : 'NOT FOUND ❌'}
+                                </p>
+                            </div>
+                            <div class="hash-details">
+                                <p><strong>Perceptual Hash:</strong> ${data.perceptual_hash}</p>
+                                <p><strong>Color Hash:</strong> ${data.color_hash}</p>
+                                <p><strong>Color Matches:</strong> ${data.matches.count}/${data.matches.total} 
+                                   (${data.matches.required} required)</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Clean up the object URL when it's no longer needed
+                const img = resultDiv.querySelector('img');
+                img.onload = () => URL.revokeObjectURL(imageUrl);
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error verifying image');
-                resetDropZone(dropZoneElement);
+                document.getElementById('result').innerHTML = `
+                    <div class="result-panel">
+                        <p style="color: #e53e3e;">Error: ${error}</p>
+                    </div>
+                `;
             });
-        }
-
-        function displayResults(data) {
-            const resultDiv = document.getElementById('result');
-            
-            // Create result HTML
-            let html = `
-                <div class="hash-info">
-                    <h3>Verification Results</h3>
-                    <div class="verification-status">
-                        <p class="status ${data.verified ? 'success' : 'failure'}">
-                            Overall Status: ${data.verified ? 'VERIFIED' : 'NOT VERIFIED'}
-                        </p>
-                        <p class="color-status ${data.color_verification ? 'success' : 'failure'}">
-                            Color Match: ${data.color_verification ? 'VALID' : 'INVALID'}
-                        </p>
-                        <p class="database-status ${data.database_verification ? 'success' : 'failure'}">
-                            Database Match: ${data.database_verification ? 'FOUND' : 'NOT FOUND'}
-                        </p>
-                    </div>
-                    <div class="hash-details">
-                        <p><strong>Perceptual Hash:</strong> ${data.perceptual_hash}</p>
-                        <p><strong>Color Hash:</strong> ${data.color_hash}</p>
-                        <p><strong>Color Matches:</strong> ${data.matches.count}/${data.matches.total} (${data.matches.required} required)</p>
-                    </div>
-                </div>
-            `;
-            
-            resultDiv.innerHTML = html;
         }
     </script>
 </body>
