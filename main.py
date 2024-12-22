@@ -40,26 +40,23 @@ def generate_color_palette(num_colors=24):
 
 def generate_color_uuid_from_hash(img, colors, hash_value, num_bars=NUM_BARS):
     """
-    Generate a deterministic sequence of 12 colors from a 64-bit hash.
-    Each color needs 5 bits (for 24 possible colors), total 60 bits used.
+    Generate a deterministic sequence of colors from a 64-bit hash.
+    Now generates absolute RGB values instead of using a palette.
     """
     # Convert hash to integer
     seed_value = int(hash_value, 16)
+    random.seed(seed_value)
     
-    # Create deterministic sequence using the hash bits
+    # Generate deterministic colors
     uuid_colors = []
-    for i in range(NUM_BARS):
-        # Use lower bits first and rotate through them
-        shift = (i * 5) % 32  # Use only lower 32 bits and cycle
-        lower_bits = (seed_value >> shift) & 0x1F
-        upper_bits = (seed_value >> (32 + shift)) & 0x1F
-        
-        # XOR lower and upper bits for better distribution
-        color_index = (lower_bits ^ upper_bits) % len(colors)
-        uuid_colors.append(colors[color_index])
+    for _ in range(NUM_BARS):
+        r = random.randint(0, 255)
+        g = random.randint(0, 255)
+        b = random.randint(0, 255)
+        uuid_colors.append((r, g, b))
     
-    # Create compact color hash (just indices)
-    color_hash = ''.join(f"{colors.index(c):02x}" for c in uuid_colors)
+    # Create color hash using base64 encoding
+    color_hash = encode_uuid_for_url(uuid_colors)
     
     return uuid_colors, color_hash
 
@@ -274,33 +271,24 @@ def create_montage_video(folder_path="images/output", fps=5, output_name="montag
     out.release()
     print(f"Video montage saved as {output_name}")
 
-def encode_uuid_for_url(uuid_colors, color_palette):
+def encode_uuid_for_url(uuid_colors, color_palette=None):
     """
-    Encode the UUID colors into a compact base64 URL-safe string.
-    With 24 colors (5 bits needed), we can pack 24 colors into 15 bytes (120 bits).
+    Encode RGB colors directly into a base64 URL-safe string.
+    Each color is 3 bytes (RGB), so 12 colors = 36 bytes.
     """
-    # Convert colors to their palette indices (0-23)
-    indices = [color_palette.index(color) for color in uuid_colors]
-    
-    # Pack indices into bytes (each index needs 5 bits)
-    packed = 0
-    for idx in indices:
-        packed = (packed << 5) | idx
-    
-    # Convert to bytes
-    bytes_needed = (NUM_BARS * 5 + 7) // 8  # Round up to nearest byte
+    # Pack RGB values into bytes
     bytes_list = []
-    for i in range(bytes_needed - 1, -1, -1):
-        bytes_list.append((packed >> (i * 8)) & 0xFF)
+    for r, g, b in uuid_colors:
+        bytes_list.extend([r, g, b])
     
     # Convert to URL-safe base64
     binary_data = bytes(bytes_list)
     url_safe = base64.urlsafe_b64encode(binary_data).decode('ascii').rstrip('=')
     return url_safe
 
-def decode_url_to_colors(url_string, color_palette):
+def decode_url_to_colors(url_string, color_palette=None):
     """
-    Decode a URL-safe string back into RGB colors.
+    Decode a URL-safe base64 string back into RGB colors.
     """
     # Add back padding if needed
     padding = 4 - (len(url_string) % 4)
@@ -310,20 +298,15 @@ def decode_url_to_colors(url_string, color_palette):
     # Decode base64 to bytes
     binary_data = base64.urlsafe_b64decode(url_string)
     
-    # Convert bytes back to packed value
-    packed = 0
-    for byte in binary_data:
-        packed = (packed << 8) | byte
+    # Convert bytes back to RGB tuples
+    colors = []
+    for i in range(0, len(binary_data), 3):
+        r = binary_data[i]
+        g = binary_data[i + 1]
+        b = binary_data[i + 2]
+        colors.append((r, g, b))
     
-    # Extract indices
-    indices = []
-    mask = (1 << 5) - 1  # 5-bit mask
-    for _ in range(NUM_BARS):
-        indices.insert(0, packed & mask)
-        packed >>= 5
-    
-    # Convert indices back to RGB colors
-    return [color_palette[i] for i in indices]
+    return colors
 
 def phash_dhash_combo(image, hash_size=4):
     """

@@ -32,7 +32,8 @@
         .container::after {
             content: '';
             position: absolute;
-            left: calc(33.33% - 1px);
+            left: 50%;
+            transform: translateX(-50%);
             top: 2rem;
             bottom: 2rem;
             width: 2px;
@@ -58,8 +59,7 @@
             gap: 1rem;
             justify-content: center;
             align-items: center;
-            min-width: 300px;
-            
+            padding: 0 2rem;
         }
 
         .result-column {
@@ -70,7 +70,7 @@
             flex-direction: column;
             align-items: center;
             height: 100vh;
-            padding: 2rem 0 2rem 5rem;
+            padding: 0;
             overflow: hidden;
             transition: all 0.3s ease;
             visibility: hidden;
@@ -95,14 +95,15 @@
 
         .container.uploaded .upload-column {
             flex: 1;
-            min-width: 300px;
+            padding-right: 5rem;
         }
 
         .container.uploaded .result-column {
-            flex: 2;
+            flex: 1;
             width: auto;
             opacity: 1;
             visibility: visible;
+            padding: 2rem 0 2rem 5rem;
         }
 
         @media (max-width: 768px) {
@@ -285,6 +286,38 @@
             background-color: #cbd5e0;
             height: 100%;
             margin: 0 1rem;
+        }
+
+        .result-panel {
+            flex: 1;
+            width: 100%;
+            height: calc(100vh - 4rem);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            padding: 2rem;
+        }
+
+        .result-panel img {
+            max-width: 100%;
+            max-height: 50vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .hash-info {
+            flex-shrink: 0;
+            width: 100%;
+            max-width: 600px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 
+                        0 1px 3px rgba(0, 0, 0, 0.08);
         }
     </style>
 </head>
